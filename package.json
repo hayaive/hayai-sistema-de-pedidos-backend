@@ -1,0 +1,30 @@
+{
+  "name": "hayai-sistema-de-pedidos-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend de pedidos y ventas (POS Karelys Delicias): PostgreSQL como fuente de verdad + API de sincronizacion offline",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "prisma:validate": "prisma validate",
+    "prisma:format": "prisma format",
+    "prisma:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:status": "prisma migrate status",
+    "db:studio": "prisma studio",
+    "db:verify": "node prisma/verify-ddl.js",
+    "db:drift": "prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "dotenv": "^17.2.3",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "prisma": "7.10.0"
+  }
+}

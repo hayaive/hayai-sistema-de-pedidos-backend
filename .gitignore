@@ -1,0 +1,26 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Variables de entorno: sólo se versiona .env.example
+.env
+.env.*
+!.env.example
+
+# Cliente de Prisma: se regenera en cada build (`prisma generate`).
+# Railway TIENE que ejecutarlo antes de compilar el Nest.
+src/generated/
+
+# Servidor de base local de `prisma dev`
+.prisma/
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
+npm-debug.log*

@@ -1,0 +1,1012 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Karelys Delicias · backend de pedidos y ventas
+//
+// Fuente de verdad relacional del POS. El modelo reproduce `AppState` del
+// frontend (C:\dev\karelys-pedidos\src\lib\types.ts) sin rediseñar sus reglas
+// de negocio; lo que cambia es el soporte: de un objeto en localStorage a
+// tablas con integridad referencial, más la infraestructura de sincronización
+// (rev, tombstones, idempotencia) que el modo offline necesita.
+//
+// Convenciones (respetarlas al añadir tablas):
+//  · Modelos en PascalCase con @@map a snake_case; campos camelCase con @map.
+//    El wire de la API queda camelCase como en el frontend; la BD, snake_case.
+//  · PK TEXT (VarChar 64), generada en el origen. Ver ARCHITECTURE.md §IDs:
+//    hay ids semánticos heredados del frontend ("pt-mayor", "prod-P060") que
+//    son constantes en su código, así que no se pueden convertir a uuid.
+//  · Dinero en NUMERIC, nunca float. USD Decimal(14,4) · Bs Decimal(18,4) ·
+//    tasa Decimal(18,8) · cantidades Decimal(14,3).
+//  · Todo DateTime es `timestamptz`. El día contable se materializa aparte en
+//    columnas `business_date` (America/Caracas), no se deriva del UTC.
+//    Las llena el trigger `set_business_date` desde el timestamp de negocio y
+//    `company_settings.timezone`; el `@default(dbgenerated("CURRENT_DATE"))` es
+//    sólo relleno para que Prisma las trate como opcionales al crear. NO las
+//    escribas desde el servicio: el trigger sobreescribe lo que llegue, y así
+//    el día del cierre de caja no puede quedar mal por un descuido. (No pueden
+//    ser columnas GENERATED: pasar timestamptz a una zona es STABLE, no
+//    IMMUTABLE, y Postgres sólo admite expresiones IMMUTABLE ahí.)
+//  · `rev` es el cursor de sincronización y el token de bloqueo optimista.
+//    Lo asigna SIEMPRE la base, con el trigger `sync_assign_rev` desde la
+//    secuencia global `sync_rev_seq` (en INSERT y en UPDATE). El `@default(0)`
+//    declarado es sólo relleno para que Prisma trate la columna como opcional:
+//    NO escribas `rev` desde el servicio y no lo pongas en ningún DTO.
+//    (Se probó `@default(dbgenerated("nextval(...)"))` y se descartó: Prisma
+//    lo confunde con una secuencia propiedad de la columna y `migrate diff`
+//    emite un DROP SEQUENCE por cada tabla, o sea que la deriva sería
+//    destructiva. Ver ARCHITECTURE.md §DDL escrito a mano.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Cliente generado DENTRO de src/ para que lo compile el mismo tsc del Nest.
+// `moduleFormat = "cjs"` + `importFileExtension = ""` es la combinación que
+// entiende el tsconfig por defecto de NestJS (module commonjs, moduleResolution
+// node): por defecto Prisma 7 emite imports con extensión `.ts` explícita y ese
+// tsc los rechaza salvo que se active `allowImportingTsExtensions`.
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enumeraciones ───────────────────────────────────────────────────────────
+// Los valores coinciden LITERALMENTE con las uniones de tipos del frontend.
+// Añadir un valor exige migración (ALTER TYPE ... ADD VALUE) y desplegar el
+// backend ANTES que el frontend que lo emite.
+
+enum Permission {
+  view_sales
+  create_sale
+  edit_sale
+  cancel_sale
+  view_inventory
+  edit_inventory
+  view_customers
+  edit_customers
+  view_orders
+  edit_orders
+  process_orders
+  close_cash
+  manage_users
+  manage_settings
+  manage_exchange_rates
+
+  @@map("permission")
+}
+
+enum MovementType {
+  entrada
+  salida
+  ajuste
+
+  @@map("movement_type")
+}
+
+enum SaleStatus {
+  completada
+  anulada
+
+  @@map("sale_status")
+}
+
+enum OrderStatus {
+  pendiente
+  preparacion
+  listo
+  procesado
+  cancelado
+
+  @@map("order_status")
+}
+
+enum Currency {
+  USD
+  BS
+
+  @@map("currency")
+}
+
+enum RateSource {
+  BCV_USD
+  BCV_EUR
+  BINANCE
+
+  @@map("rate_source")
+}
+
+enum RateCurrency {
+  USD
+  EUR
+
+  @@map("rate_currency")
+}
+
+/// Raíces de agregado que admiten borrado y por tanto necesitan tombstone.
+/// Las tablas append-only (ventas, movimientos, tasas, auditoría, abonos) no
+/// aparecen aquí: nunca se borran, se anulan.
+enum SyncEntity {
+  category
+  price_type
+  price_group
+  product
+  customer
+  user
+  role
+  payment_method
+  order
+
+  @@map("sync_entity")
+}
+
+enum MutationStatus {
+  applied
+  duplicate
+  conflict
+  rejected
+
+  @@map("mutation_status")
+}
+
+// ─── Seguridad: roles, permisos, usuarios ────────────────────────────────────
+
+model Role {
+  id     String  @id @db.VarChar(64)
+  name   String  @unique @db.VarChar(80)
+  /// Rol de sistema: no se puede borrar ni editar sus permisos.
+  system Boolean @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  permissions RolePermission[]
+  users       User[]
+
+  @@index([rev])
+  @@map("roles")
+}
+
+/// Matriz rol × permiso. Es hija del agregado `Role`: no tiene `rev` propio,
+/// un cambio aquí bumpea el `rev` del rol y el delta reenvía el rol completo.
+model RolePermission {
+  roleId     String     @map("role_id") @db.VarChar(64)
+  permission Permission
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permission])
+  @@map("role_permissions")
+}
+
+model User {
+  id                String    @id @db.VarChar(64)
+  /// Normalizado a minúsculas por la API antes de guardar.
+  username          String    @unique @db.VarChar(40)
+  fullName          String    @map("full_name") @db.VarChar(120)
+  email             String?   @db.VarChar(160)
+  /// argon2id. NUNCA sale del servidor: ni en /bootstrap ni en /sync.
+  passwordHash      String    @map("password_hash") @db.VarChar(255)
+  passwordUpdatedAt DateTime? @map("password_updated_at") @db.Timestamptz(3)
+
+  roleId        String    @map("role_id") @db.VarChar(64)
+  active        Boolean   @default(true)
+  /// Momento de la desactivación: decide si una mutación offline en cola,
+  /// creada antes de este instante, todavía se acepta (ver ARCHITECTURE.md).
+  deactivatedAt DateTime? @map("deactivated_at") @db.Timestamptz(3)
+  /// Usuario técnico ("system"): dueño de los asientos que genera el servidor.
+  /// El login lo rechaza siempre.
+  system        Boolean   @default(false)
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  role           Role                @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  sales          Sale[]              @relation("sale_user")
+  voidedSales    Sale[]              @relation("sale_voided_by")
+  orders         Order[]
+  deposits       OrderDeposit[]      @relation("deposit_user")
+  voidedDeposits OrderDeposit[]      @relation("deposit_voided_by")
+  movements      InventoryMovement[]
+  rates          ExchangeRate[]
+  closures       DailyClosure[]
+  auditEntries   AuditLog[]
+  sessions       RefreshToken[]
+
+  @@index([rev])
+  @@index([roleId])
+  @@map("users")
+}
+
+/// Sesiones de refresco. Se guarda el hash del token, no el token.
+model RefreshToken {
+  id         String    @id @db.VarChar(64)
+  userId     String    @map("user_id") @db.VarChar(64)
+  tokenHash  String    @unique @map("token_hash") @db.VarChar(255)
+  deviceId   String?   @map("device_id") @db.VarChar(64)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ─── Catálogo y precios ──────────────────────────────────────────────────────
+
+model Category {
+  id     String  @id @db.VarChar(64)
+  name   String  @unique @db.VarChar(80)
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  products        Product[]
+  priceGroups     PriceGroup[]
+  companySettings CompanySettings[] @relation("cold_cake_category")
+
+  @@index([rev])
+  @@map("categories")
+}
+
+/// Tipo de precio (Mayor / Detal). Sólo uno debería tener `isDefault`; la
+/// invariante la aplica el servicio, no una restricción (ver ARCHITECTURE.md).
+model PriceType {
+  id        String  @id @db.VarChar(64)
+  name      String  @unique @db.VarChar(60)
+  isDefault Boolean @default(false) @map("is_default")
+  position  Int     @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  productPrices    ProductPrice[]
+  priceGroupPrices PriceGroupPrice[]
+  saleItems        SaleItem[]
+  orderItems       OrderItem[]
+
+  @@index([rev])
+  @@map("price_types")
+}
+
+/// Unidad de precio compartida ("precio general"). Editar el grupo cambia el
+/// precio de todos sus miembros a la vez.
+///
+/// La `PriceRule` del frontend se aplana en 4 columnas. Semántica que hay que
+/// preservar (lib/pricing.priceRuleOf):
+///   · regla presente  ⇔ rule_min_usd y rule_target_usd no nulos
+///   · banda presente  ⇔ rule_band_min_usd y rule_band_max_usd no nulos
+///   · sólo un grupo CON banda puede bloquear una venta; sin banda, la regla
+///     únicamente dispara la alerta de precio bajo.
+/// Los CHECK que sostienen esas equivalencias están escritos a mano en
+/// migration.sql (Prisma no expresa CHECK).
+model PriceGroup {
+  id         String  @id @db.VarChar(64)
+  name       String  @db.VarChar(120)
+  categoryId String? @map("category_id") @db.VarChar(64)
+  active     Boolean @default(true)
+
+  ruleMinUsd     Decimal? @map("rule_min_usd") @db.Decimal(14, 4)
+  ruleTargetUsd  Decimal? @map("rule_target_usd") @db.Decimal(14, 4)
+  ruleBandMinUsd Decimal? @map("rule_band_min_usd") @db.Decimal(14, 4)
+  ruleBandMaxUsd Decimal? @map("rule_band_max_usd") @db.Decimal(14, 4)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  category Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  prices   PriceGroupPrice[]
+  products Product[]
+
+  @@index([categoryId])
+  @@index([rev])
+  @@map("price_groups")
+}
+
+/// Precio del grupo por tipo de precio. La celda (grupo, tipo) es la unidad de
+/// conflicto: dos dispositivos que editan tipos distintos no chocan.
+model PriceGroupPrice {
+  priceGroupId String  @map("price_group_id") @db.VarChar(64)
+  priceTypeId  String  @map("price_type_id") @db.VarChar(64)
+  amount       Decimal @db.Decimal(14, 4)
+
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  priceGroup PriceGroup @relation(fields: [priceGroupId], references: [id], onDelete: Cascade)
+  priceType  PriceType  @relation(fields: [priceTypeId], references: [id], onDelete: Restrict)
+
+  @@id([priceGroupId, priceTypeId])
+  @@map("price_group_prices")
+}
+
+model Product {
+  id          String  @id @db.VarChar(64)
+  /// Clave de negocio del catálogo (P001, C011…). Única y NO reutilizable:
+  /// al borrar un producto su código pasa a `retired_product_codes`.
+  code        String  @unique @db.VarChar(32)
+  name        String  @db.VarChar(160)
+  description String? @db.Text
+  categoryId  String  @map("category_id") @db.VarChar(64)
+  imageUrl    String? @map("image_url") @db.Text
+
+  /// Existencia materializada. **Nunca la escribe un cliente**: sólo la mueve
+  /// el servidor dentro de la misma transacción que inserta el movimiento de
+  /// inventario (ver ARCHITECTURE.md §Inventario).
+  stock    Decimal @default(0) @db.Decimal(14, 3)
+  minStock Decimal @default(0) @map("min_stock") @db.Decimal(14, 3)
+  active   Boolean @default(true)
+
+  /// Producto con precio fijado en Bs: no se convierte desde USD.
+  bsOnly  Boolean  @default(false) @map("bs_only")
+  bsPrice Decimal? @map("bs_price") @db.Decimal(18, 4)
+
+  /// Si está definido, el precio de venta lo dicta el grupo y NO `prices`.
+  /// `prices` se conserva siempre como respaldo histórico.
+  priceGroupId String? @map("price_group_id") @db.VarChar(64)
+
+  isCombo            Boolean  @default(false) @map("is_combo")
+  allowCustomization Boolean  @default(false) @map("allow_customization")
+  customizationPrice Decimal? @map("customization_price") @db.Decimal(14, 4)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  category   Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  priceGroup PriceGroup? @relation(fields: [priceGroupId], references: [id], onDelete: SetNull)
+
+  prices      ProductPrice[]
+  comboItems  ComboItem[]         @relation("combo_owner")
+  comboUsages ComboItem[]         @relation("combo_component")
+  movements   InventoryMovement[]
+  saleItems   SaleItem[]
+  orderItems  OrderItem[]
+
+  @@index([categoryId])
+  @@index([priceGroupId])
+  @@index([active])
+  @@index([rev])
+  @@map("products")
+}
+
+/// Precio propio del producto por tipo de precio. Fuente de verdad **sólo** si
+/// el producto no pertenece a un grupo (lib/pricing.resolvePrices).
+model ProductPrice {
+  productId   String  @map("product_id") @db.VarChar(64)
+  priceTypeId String  @map("price_type_id") @db.VarChar(64)
+  amount      Decimal @db.Decimal(14, 4)
+
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceType PriceType @relation(fields: [priceTypeId], references: [id], onDelete: Restrict)
+
+  @@id([productId, priceTypeId])
+  @@map("product_prices")
+}
+
+/// Contenido declarado de un combo. Es descriptivo (no descuenta inventario:
+/// `createSale` no mueve stock de los combos), y `componentProductId` sólo se
+/// llena cuando la línea del combo apunta a un producto del catálogo.
+model ComboItem {
+  id                 String  @id @db.VarChar(64)
+  comboProductId     String  @map("combo_product_id") @db.VarChar(64)
+  position           Int
+  description        String  @db.VarChar(160)
+  qty                Decimal @db.Decimal(14, 3)
+  componentProductId String? @map("component_product_id") @db.VarChar(64)
+
+  combo     Product  @relation("combo_owner", fields: [comboProductId], references: [id], onDelete: Cascade)
+  component Product? @relation("combo_component", fields: [componentProductId], references: [id], onDelete: SetNull)
+
+  @@unique([comboProductId, position])
+  @@index([componentProductId])
+  @@map("combo_items")
+}
+
+/// Códigos de producto retirados. Existen para que un código no se reasigne
+/// nunca: un comprobante viejo que dice "P001 · tres-leches" no debe poder
+/// resolver a un producto distinto. Se siembra con P001–P013 (los 13 sabores
+/// consolidados en el esquema v3 del frontend) y se alimenta en cada borrado.
+model RetiredProductCode {
+  code            String   @id @db.VarChar(32)
+  formerName      String?  @map("former_name") @db.VarChar(160)
+  formerProductId String?  @map("former_product_id") @db.VarChar(64)
+  reason          String?  @db.VarChar(200)
+  retiredAt       DateTime @default(now()) @map("retired_at") @db.Timestamptz(3)
+
+  @@map("retired_product_codes")
+}
+
+// ─── Inventario (ledger) ─────────────────────────────────────────────────────
+
+/// Kardex append-only. Es la fuente de verdad de la existencia; `products.stock`
+/// es sólo su materialización.
+///
+/// `delta` y `stockAfter` los calcula el SERVIDOR al aplicar:
+///   entrada → delta = +qty · salida → delta = −qty
+///   ajuste  → delta = qty − stock_actual  (se resuelve en el momento de
+///             aplicar, no en el momento de capturar: así un ajuste creado
+///             offline no borra las ventas que ocurrieron entre medio).
+/// Invariante verificable: SUM(delta) por producto = products.stock.
+model InventoryMovement {
+  id         String       @id @db.VarChar(64)
+  productId  String       @map("product_id") @db.VarChar(64)
+  type       MovementType
+  /// Cantidad tal como la capturó el usuario (en `ajuste` es el valor absoluto
+  /// al que se quiere llevar la existencia).
+  qty        Decimal      @db.Decimal(14, 3)
+  delta      Decimal      @db.Decimal(14, 3)
+  stockAfter Decimal      @map("stock_after") @db.Decimal(14, 3)
+
+  reason String  @db.VarChar(120)
+  note   String? @db.Text
+  userId String  @map("user_id") @db.VarChar(64)
+
+  /// Documento que originó el movimiento, si lo hubo. Permite detectar que la
+  /// devolución de stock de una anulación ya se asentó (idempotencia).
+  saleId  String? @map("sale_id") @db.VarChar(64)
+  orderId String? @map("order_id") @db.VarChar(64)
+
+  deviceId  String?  @map("device_id") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  sale    Sale?   @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  device  Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@index([saleId])
+  @@index([rev])
+  @@map("inventory_movements")
+}
+
+// ─── Clientes ────────────────────────────────────────────────────────────────
+
+model Customer {
+  id      String  @id @db.VarChar(64)
+  /// Cédula normalizada (mayúsculas, sin espacios) y única: es la identidad
+  /// del cliente. Una creación offline que choque se **fusiona** con la fila
+  /// existente y el servidor devuelve el remapeo de id (ver §Conflictos).
+  /// El formato se valida en el DTO, no con un CHECK: un CHECK rechazaría
+  /// valores heredados y reventaría la importación inicial.
+  cedula  String  @unique @db.VarChar(24)
+  name    String  @db.VarChar(160)
+  phone   String? @db.VarChar(40)
+  address String? @db.Text
+  active  Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  sales  Sale[]
+  orders Order[]
+
+  @@index([name])
+  @@index([rev])
+  @@map("customers")
+}
+
+// ─── Tasas de cambio (log append-only) ───────────────────────────────────────
+
+/// Nunca se sobreescribe una tasa: se publica una nueva. La vigente es la de
+/// `created_at` máximo por fuente (lib/pricing.currentRate).
+model ExchangeRate {
+  id        String       @id @db.VarChar(64)
+  source    RateSource
+  currency  RateCurrency
+  value     Decimal      @db.Decimal(18, 8)
+  automatic Boolean      @default(false)
+  /// NULL cuando la publicó el job automático (coincide con el frontend, que
+  /// declara `userId: ID | null`).
+  userId    String?      @map("user_id") @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([source, createdAt(sort: Desc)])
+  @@index([rev])
+  @@map("exchange_rates")
+}
+
+// ─── Formas de pago ──────────────────────────────────────────────────────────
+
+model PaymentMethod {
+  id                String   @id @db.VarChar(64)
+  name              String   @unique @db.VarChar(80)
+  currency          Currency
+  requiresReference Boolean  @default(false) @map("requires_reference")
+  active            Boolean  @default(true)
+  position          Int      @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  salePayments  SalePayment[]
+  orderDeposits OrderDeposit[]
+  closureLines  ClosureMethod[]
+
+  @@index([rev])
+  @@map("payment_methods")
+}
+
+// ─── Ventas (inmutables) ─────────────────────────────────────────────────────
+
+/// Comprobante emitido. Insert-only: lo único que cambia después es el paso a
+/// `anulada`. No hay ruta de edición (el frontend tampoco la tiene).
+///
+/// La tasa se congela en las 4 columnas `rate_*` porque un comprobante debe
+/// poder reimprimirse con la tasa a la que realmente se cobró.
+model Sale {
+  id           String  @id @db.VarChar(64)
+  /// Número definitivo. Lo asigna el SERVIDOR desde company_settings.sale_next.
+  number       String  @unique @db.VarChar(24)
+  /// Número provisional que traía una venta creada offline, si hubo que
+  /// renumerarla. Permite encontrar la venta por el ticket que se imprimió.
+  clientNumber String? @map("client_number") @db.VarChar(24)
+
+  /// Momento de negocio (puede venir del cliente en ventas offline; el
+  /// servidor lo acota contra su propio reloj).
+  createdAt    DateTime @map("created_at") @db.Timestamptz(3)
+  /// Momento en que el servidor la aceptó.
+  receivedAt   DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+  /// Día contable en America/Caracas derivado de `createdAt`. Se materializa
+  /// porque el cierre de caja agrupa por día local y `createdAt::date` en UTC
+  /// manda las ventas después de las 20:00 al día siguiente.
+  businessDate DateTime @default(dbgenerated("CURRENT_DATE")) @map("business_date") @db.Date
+
+  customerId   String? @map("customer_id") @db.VarChar(64)
+  customerName String  @default("Consumidor final") @map("customer_name") @db.VarChar(160)
+  userId       String  @map("user_id") @db.VarChar(64)
+  userName     String  @map("user_name") @db.VarChar(120)
+
+  totalUsd  Decimal  @map("total_usd") @db.Decimal(14, 4)
+  totalBs   Decimal  @map("total_bs") @db.Decimal(18, 4)
+  changeUsd Decimal? @map("change_usd") @db.Decimal(14, 4)
+
+  rateUsd     Decimal  @map("rate_usd") @db.Decimal(18, 8)
+  rateEur     Decimal  @map("rate_eur") @db.Decimal(18, 8)
+  rateBinance Decimal  @map("rate_binance") @db.Decimal(18, 8)
+  rateAt      DateTime @map("rate_at") @db.Timestamptz(3)
+
+  status  SaleStatus @default(completada)
+  orderId String?    @map("order_id") @db.VarChar(64)
+  note    String?    @db.Text
+
+  voidedAt       DateTime? @map("voided_at") @db.Timestamptz(3)
+  voidReason     String?   @map("void_reason") @db.VarChar(300)
+  voidedByUserId String?   @map("voided_by_user_id") @db.VarChar(64)
+
+  deviceId       String?  @map("device_id") @db.VarChar(64)
+  createdOffline Boolean  @default(false) @map("created_offline")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev            Int      @default(0)
+
+  customer     Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  user         User                @relation("sale_user", fields: [userId], references: [id], onDelete: Restrict)
+  voidedBy     User?               @relation("sale_voided_by", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  order        Order?              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  device       Device?             @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  items        SaleItem[]
+  payments     SalePayment[]
+  movements    InventoryMovement[]
+  usedDeposits OrderDeposit[]
+
+  @@index([businessDate])
+  @@index([createdAt])
+  @@index([customerId])
+  @@index([status, createdAt])
+  @@index([orderId])
+  @@index([rev])
+  @@map("sales")
+}
+
+/// Línea de venta. `code`, `name` y los precios son la FOTO del momento y no se
+/// recalculan nunca: el comprobante viejo debe seguir leyéndose igual aunque el
+/// producto cambie de nombre o de precio.
+model SaleItem {
+  id       String @id @db.VarChar(64)
+  saleId   String @map("sale_id") @db.VarChar(64)
+  position Int
+
+  productId String  @map("product_id") @db.VarChar(64)
+  code      String  @db.VarChar(32)
+  name      String  @db.VarChar(160)
+  qty       Decimal @db.Decimal(14, 3)
+
+  priceTypeId  String   @map("price_type_id") @db.VarChar(64)
+  unitPriceUsd Decimal  @map("unit_price_usd") @db.Decimal(14, 4)
+  /// Sólo se llena cuando `bsOnly`: el equivalente en Bs de una línea en USD se
+  /// calcula al mostrar/cobrar, nunca se precomputa.
+  unitPriceBs  Decimal? @map("unit_price_bs") @db.Decimal(18, 4)
+  bsOnly       Boolean  @default(false) @map("bs_only")
+
+  customization      String?  @db.VarChar(300)
+  customizationPrice Decimal? @map("customization_price") @db.Decimal(14, 4)
+  subtotalUsd        Decimal  @map("subtotal_usd") @db.Decimal(14, 4)
+
+  sale      Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  priceType PriceType @relation(fields: [priceTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([saleId, position])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+/// Pago de una venta. `businessDate` es el día en que ENTRÓ el dinero, que no
+/// siempre es el de la venta: un abono cobrado el lunes y facturado el viernes
+/// pertenece a la caja del lunes (lib/business.closureDraft).
+model SalePayment {
+  id       String @id @db.VarChar(64)
+  saleId   String @map("sale_id") @db.VarChar(64)
+  position Int
+
+  methodId      String   @map("method_id") @db.VarChar(64)
+  methodName    String   @map("method_name") @db.VarChar(80)
+  currency      Currency
+  /// Monto en la moneda del método.
+  amount        Decimal  @db.Decimal(18, 4)
+  usdEquivalent Decimal  @map("usd_equivalent") @db.Decimal(14, 4)
+  reference     String?  @db.VarChar(80)
+  at            DateTime @db.Timestamptz(3)
+  businessDate  DateTime @default(dbgenerated("CURRENT_DATE")) @map("business_date") @db.Date
+  /// Tasa con la que se calculó `usdEquivalent`. Obligatoria si el pago es en
+  /// Bs (CHECK a mano): un cobro en Bs sin tasa congelada no es auditable.
+  rateUsed      Decimal? @map("rate_used") @db.Decimal(18, 8)
+
+  /// Abono de pedido que originó este pago. Único: un abono no puede ser
+  /// consumido por dos ventas. Los pagos con este campo NO se cuentan en el
+  /// cierre del día de la venta (ya se contaron el día del abono).
+  fromOrderDepositId String? @unique @map("from_order_deposit_id") @db.VarChar(64)
+
+  sale             Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  method           PaymentMethod @relation(fields: [methodId], references: [id], onDelete: Restrict)
+  fromOrderDeposit OrderDeposit? @relation(fields: [fromOrderDepositId], references: [id], onDelete: Restrict)
+
+  @@unique([saleId, position])
+  @@index([businessDate])
+  @@index([methodId])
+  @@map("sale_payments")
+}
+
+// ─── Pedidos y abonos ────────────────────────────────────────────────────────
+
+/// Pedido por encargo. Es el único agregado que admite edición concurrente, y
+/// por eso lleva bloqueo optimista con `rev` (ver ARCHITECTURE.md §Conflictos).
+///
+/// `totalUsd` es derivado (suma de líneas) pero se materializa porque
+/// `orderBalance()` lo lee; lo recalcula SIEMPRE el servidor, nunca se acepta
+/// del cliente. El total abonado y el saldo NO se persisten: se derivan de los
+/// abonos vigentes para que no puedan desincronizarse al editar las líneas.
+model Order {
+  id           String  @id @db.VarChar(64)
+  number       String  @unique @db.VarChar(24)
+  clientNumber String? @map("client_number") @db.VarChar(24)
+
+  createdAt    DateTime @map("created_at") @db.Timestamptz(3)
+  receivedAt   DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+  businessDate DateTime @default(dbgenerated("CURRENT_DATE")) @map("business_date") @db.Date
+
+  customerId   String? @map("customer_id") @db.VarChar(64)
+  customerName String  @default("Consumidor final") @map("customer_name") @db.VarChar(160)
+  userId       String  @map("user_id") @db.VarChar(64)
+
+  totalUsd Decimal     @map("total_usd") @db.Decimal(14, 4)
+  note     String?     @db.Text
+  status   OrderStatus @default(pendiente)
+  /// Venta que finalmente lo facturó.
+  saleId   String?     @map("sale_id") @db.VarChar(64)
+
+  canceledAt   DateTime? @map("canceled_at") @db.Timestamptz(3)
+  cancelReason String?   @map("cancel_reason") @db.VarChar(300)
+
+  deviceId       String?  @map("device_id") @db.VarChar(64)
+  createdOffline Boolean  @default(false) @map("created_offline")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev            Int      @default(0)
+
+  customer  Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  user      User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  device    Device?             @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  items     OrderItem[]
+  deposits  OrderDeposit[]
+  sales     Sale[]
+  movements InventoryMovement[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([customerId])
+  @@index([businessDate])
+  @@index([rev])
+  @@map("orders")
+}
+
+model OrderItem {
+  id       String @id @db.VarChar(64)
+  orderId  String @map("order_id") @db.VarChar(64)
+  position Int
+
+  productId String  @map("product_id") @db.VarChar(64)
+  code      String  @db.VarChar(32)
+  name      String  @db.VarChar(160)
+  qty       Decimal @db.Decimal(14, 3)
+
+  priceTypeId  String   @map("price_type_id") @db.VarChar(64)
+  unitPriceUsd Decimal  @map("unit_price_usd") @db.Decimal(14, 4)
+  unitPriceBs  Decimal? @map("unit_price_bs") @db.Decimal(18, 4)
+  bsOnly       Boolean  @default(false) @map("bs_only")
+
+  customization      String?  @db.VarChar(300)
+  customizationPrice Decimal? @map("customization_price") @db.Decimal(14, 4)
+  subtotalUsd        Decimal  @map("subtotal_usd") @db.Decimal(14, 4)
+
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  priceType PriceType @relation(fields: [priceTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, position])
+  @@index([productId])
+  @@map("order_items")
+}
+
+/// Abono / pago adelantado sobre un pedido. Dinero que YA entró a caja: es
+/// append-only (se anula, no se borra) y congela la tasa del momento.
+///
+/// Es la única entidad que se FUSIONA siempre en la sincronización: dos
+/// dispositivos que registran abonos offline sobre el mismo pedido deben
+/// conservar los dos. Si la suma excede el total, el excedente se reporta como
+/// `overpaidUsd` (el frontend ya modela ese caso), no se rechaza.
+model OrderDeposit {
+  id      String @id @db.VarChar(64)
+  orderId String @map("order_id") @db.VarChar(64)
+
+  methodId      String   @map("method_id") @db.VarChar(64)
+  methodName    String   @map("method_name") @db.VarChar(80)
+  currency      Currency
+  amount        Decimal  @db.Decimal(18, 4)
+  usdEquivalent Decimal  @map("usd_equivalent") @db.Decimal(14, 4)
+  /// Tasa congelada al recibir el abono. Obligatoria (el frontend la declara
+  /// no opcional en `OrderDeposit`).
+  rateUsed      Decimal  @map("rate_used") @db.Decimal(18, 8)
+  reference     String?  @db.VarChar(80)
+  note          String?  @db.Text
+
+  /// Fecha real de recepción del dinero y su día contable: el cierre de caja
+  /// cuenta el abono en SU día, no en el de la venta.
+  at           DateTime @db.Timestamptz(3)
+  businessDate DateTime @default(dbgenerated("CURRENT_DATE")) @map("business_date") @db.Date
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  userId String  @map("user_id") @db.VarChar(64)
+  /// Venta que consumió el abono, si el pedido ya se procesó.
+  saleId String? @map("sale_id") @db.VarChar(64)
+
+  voided         Boolean   @default(false)
+  voidedAt       DateTime? @map("voided_at") @db.Timestamptz(3)
+  voidReason     String?   @map("void_reason") @db.VarChar(300)
+  voidedByUserId String?   @map("voided_by_user_id") @db.VarChar(64)
+
+  deviceId  String?  @map("device_id") @db.VarChar(64)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  method      PaymentMethod @relation(fields: [methodId], references: [id], onDelete: Restrict)
+  user        User          @relation("deposit_user", fields: [userId], references: [id], onDelete: Restrict)
+  voidedBy    User?         @relation("deposit_voided_by", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  sale        Sale?         @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  device      Device?       @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  salePayment SalePayment?
+
+  @@index([orderId])
+  @@index([businessDate])
+  @@index([saleId])
+  @@index([rev])
+  @@map("order_deposits")
+}
+
+// ─── Cierre de caja ──────────────────────────────────────────────────────────
+
+/// Un cierre por día contable. Si un segundo dispositivo intenta cerrar el
+/// mismo día, el servidor conserva el primero y devuelve el existente.
+/// (Si algún día hay más de una caja, la clave pasa a (date, register_id).)
+model DailyClosure {
+  id       String   @id @db.VarChar(64)
+  date     DateTime @unique @db.Date
+  userId   String   @map("user_id") @db.VarChar(64)
+  userName String   @map("user_name") @db.VarChar(120)
+
+  salesCount    Int     @map("sales_count")
+  totalUsd      Decimal @map("total_usd") @db.Decimal(14, 4)
+  totalBs       Decimal @map("total_bs") @db.Decimal(18, 4)
+  depositUsd    Decimal @default(0) @map("deposit_usd") @db.Decimal(14, 4)
+  expectedUsd   Decimal @map("expected_usd") @db.Decimal(14, 4)
+  receivedUsd   Decimal @map("received_usd") @db.Decimal(14, 4)
+  differenceUsd Decimal @map("difference_usd") @db.Decimal(14, 4)
+  note          String? @db.Text
+
+  closedAt  DateTime @map("closed_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  methods ClosureMethod[]
+
+  @@index([rev])
+  @@map("daily_closures")
+}
+
+model ClosureMethod {
+  closureId  String  @map("closure_id") @db.VarChar(64)
+  methodId   String  @map("method_id") @db.VarChar(64)
+  methodName String  @map("method_name") @db.VarChar(80)
+  expected   Decimal @db.Decimal(14, 4)
+  received   Decimal @db.Decimal(14, 4)
+
+  closure DailyClosure  @relation(fields: [closureId], references: [id], onDelete: Cascade)
+  method  PaymentMethod @relation(fields: [methodId], references: [id], onDelete: Restrict)
+
+  @@id([closureId, methodId])
+  @@map("closure_methods")
+}
+
+// ─── Auditoría ───────────────────────────────────────────────────────────────
+
+/// Bitácora append-only. El frontend la recorta a 500 entradas; el servidor la
+/// conserva completa y sólo envía la cola reciente en /bootstrap y /sync.
+model AuditLog {
+  id       String  @id @db.VarChar(64)
+  userId   String  @map("user_id") @db.VarChar(64)
+  userName String  @map("user_name") @db.VarChar(120)
+  action   String  @db.VarChar(60)
+  entity   String  @db.VarChar(40)
+  entityId String  @map("entity_id") @db.VarChar(64)
+  /// El frontend lo produce y consume como string JSON; se guarda jsonb y la
+  /// API lo vuelve a serializar a string al responder.
+  data     Json?
+  deviceId String? @map("device_id") @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([entity, entityId])
+  @@index([userId])
+  @@index([rev])
+  @@map("audit_log")
+}
+
+// ─── Configuración de la empresa (fila única) ────────────────────────────────
+
+/// Singleton: `id` siempre 'singleton' (CHECK a mano en migration.sql).
+model CompanySettings {
+  id           String @id @default("singleton") @db.VarChar(16)
+  name         String @db.VarChar(160)
+  logoUrl      String @default("") @map("logo_url") @db.Text
+  phone        String @default("") @db.VarChar(60)
+  address      String @default("") @db.Text
+  taxId        String @default("") @map("tax_id") @db.VarChar(40)
+  ticketFooter String @default("") @map("ticket_footer") @db.Text
+
+  /// Numeración de documentos. **Propiedad del servidor**: nunca se acepta el
+  /// valor de un cliente (ver §Numeración).
+  salePrefix  String @default("V-") @map("sale_prefix") @db.VarChar(8)
+  saleNext    Int    @default(1) @map("sale_next")
+  orderPrefix String @default("P-") @map("order_prefix") @db.VarChar(8)
+  orderNext   Int    @default(1) @map("order_next")
+
+  /// Regla de precio por defecto de tortas frías: umbral de alerta y precio
+  /// objetivo sugerido (lib/pricing.companyPriceRule).
+  coldCakeMin        Decimal @default(1.10) @map("cold_cake_min") @db.Decimal(14, 4)
+  coldCakeMax        Decimal @default(1.30) @map("cold_cake_max") @db.Decimal(14, 4)
+  coldCakeCategoryId String? @map("cold_cake_category_id") @db.VarChar(64)
+
+  /// Paso de redondeo en Bs (1 = bolívares enteros).
+  bsRounding      Decimal @default(1) @map("bs_rounding") @db.Decimal(10, 4)
+  rateMaxAgeHours Int     @default(24) @map("rate_max_age_hours")
+  /// Zona con la que se calcula el día contable de ventas, pagos y abonos.
+  timezone        String  @default("America/Caracas") @db.VarChar(60)
+  /// Versión de esquema que el frontend debe entender (AppState.version).
+  schemaVersion   Int     @default(3) @map("schema_version")
+  shortcuts       Json?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rev       Int      @default(0)
+
+  coldCakeCategory Category? @relation("cold_cake_category", fields: [coldCakeCategoryId], references: [id], onDelete: SetNull)
+
+  @@map("company_settings")
+}
+
+// ─── Infraestructura de sincronización ───────────────────────────────────────
+
+/// Dispositivo (navegador/instalación). Sirve para auditar el origen de cada
+/// asiento y para diagnosticar "este equipo no sincroniza desde el martes".
+model Device {
+  id         String    @id @db.VarChar(64)
+  name       String?   @db.VarChar(120)
+  userAgent  String?   @map("user_agent") @db.Text
+  lastUserId String?   @map("last_user_id") @db.VarChar(64)
+  lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(3)
+  /// Último cursor confirmado por el dispositivo.
+  lastCursor Int?      @map("last_cursor")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  mutations     SyncMutation[]
+  refreshTokens RefreshToken[]
+  sales         Sale[]
+  orders        Order[]
+  deposits      OrderDeposit[]
+  movements     InventoryMovement[]
+  auditEntries  AuditLog[]
+
+  @@index([lastSeenAt])
+  @@map("devices")
+}
+
+/// Bitácora de idempotencia de `POST /sync`. Si una mutación se reenvía (la red
+/// murió después del commit), se devuelve el resultado guardado sin re-aplicar.
+model SyncMutation {
+  /// `mutationId` generado por el cliente.
+  id           String         @id @db.VarChar(64)
+  deviceId     String?        @map("device_id") @db.VarChar(64)
+  userId       String?        @map("user_id") @db.VarChar(64)
+  entity       String         @db.VarChar(40)
+  op           String         @db.VarChar(40)
+  entityId     String         @map("entity_id") @db.VarChar(64)
+  status       MutationStatus
+  rejectReason String?        @map("reject_reason") @db.VarChar(200)
+  /// Respuesta que se devolvió (incluye remapeos de id y renumeraciones).
+  result       Json?
+  clientAt     DateTime?      @map("client_at") @db.Timestamptz(3)
+  appliedAt    DateTime       @default(now()) @map("applied_at") @db.Timestamptz(3)
+
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([appliedAt])
+  @@index([entity, entityId])
+  @@index([deviceId, appliedAt])
+  @@map("sync_mutations")
+}
+
+/// Tombstones. Un cliente que sólo recibe altas y cambios nunca se enteraría de
+/// un borrado; esta tabla viaja en el mismo cursor `rev` que el resto.
+/// Retención: `SYNC_TOMBSTONE_RETENTION_DAYS` (90 por defecto). Un dispositivo
+/// desconectado más tiempo que eso debe rehacer /bootstrap.
+model SyncDeletion {
+  id              Int        @id @default(autoincrement())
+  entity          SyncEntity
+  entityId        String     @map("entity_id") @db.VarChar(64)
+  deletedByUserId String?    @map("deleted_by_user_id") @db.VarChar(64)
+  deletedAt       DateTime   @default(now()) @map("deleted_at") @db.Timestamptz(3)
+  rev             Int        @default(0)
+
+  @@unique([entity, entityId])
+  @@index([rev])
+  @@map("sync_deletions")
+}
