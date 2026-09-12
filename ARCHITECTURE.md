@@ -651,11 +651,25 @@ a mano** con lo que el DSL de Prisma no expresa:
 
 ### Cómo escribir las migraciones siguientes (importante)
 
-Prisma **no ve** nada de lo anterior en su diff — verificado: con todo aplicado,
-`migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma`
-sale **vacío**, incluidos los dos índices únicos parciales (modela el índice pero
-no el predicado, así que los considera equivalentes a lo declarado y no los
-toca). Aun así, el flujo seguro es:
+Prisma **no ve** nada de lo anterior en su diff. Verificado con todo aplicado, en
+las dos direcciones, y las dos salen **vacías**:
+
+```bash
+npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script
+npx prisma migrate diff --from-config-datasource            --to-schema prisma/schema.prisma --script
+```
+
+Incluye los dos índices únicos **parciales**: Prisma modela el índice pero no su
+predicado, así que no los toca. (En la misma corrida se comprobó que ambos
+existían y se aplicaban, o sea que el diff vacío no es un falso negativo.)
+
+> **El riesgo real no es el diff, es el DDL fuera de las migraciones.** Todo lo
+> de la tabla de arriba vive **dentro de `migration.sql`**. Un objeto creado a
+> mano directamente contra una base (un índice añadido por psql "para salir del
+> paso") es deuda invisible: cualquier reset por deriva se lo lleva y nadie se
+> entera hasta que aparece el dato duplicado que impedía.
+
+Aun así, el flujo seguro para escribir migraciones es:
 
 ```bash
 npx prisma migrate diff \
