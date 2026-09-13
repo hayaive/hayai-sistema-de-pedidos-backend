@@ -52,6 +52,13 @@ export class AppError extends HttpException {
 
   constructor(code: ErrorCode, message: string, details?: unknown) {
     super({ error: { code, message, ...(details === undefined ? {} : { details }) } }, STATUS[code]);
+    // `HttpException.initMessage()` sólo copia a `this.message` un `.message`
+    // string en el nivel superior de `response`; el nuestro va anidado en
+    // `error.message`, así que sin esto `.message` queda en el nombre de la
+    // clase humanizado ("AppError" -> "App Error") y se pierde la razón real
+    // en cualquier código que lea `err.message` directamente (p.ej. el motivo
+    // de rechazo que se le devuelve al cliente en `POST /sync`).
+    this.message = message;
     this.code = code;
     this.details = details;
   }
