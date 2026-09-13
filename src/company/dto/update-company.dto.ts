@@ -1,0 +1,41 @@
+import {
+  IsInt,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+
+/**
+ * Parche de la configuración. **No declara `saleNext` ni `orderNext`**: la
+ * numeración es propiedad del servidor y aceptarla de un cliente permitiría
+ * reemitir un número ya usado (ARCHITECTURE.md §3.2 y §5).
+ */
+export class UpdateCompanyDto {
+  @IsOptional() @IsString() @MaxLength(160) name?: string;
+  @IsOptional() @IsString() @MaxLength(2000) logoUrl?: string;
+  @IsOptional() @IsString() @MaxLength(60) phone?: string;
+  @IsOptional() @IsString() @MaxLength(500) address?: string;
+  @IsOptional() @IsString() @MaxLength(40) taxId?: string;
+  @IsOptional() @IsString() @MaxLength(500) ticketFooter?: string;
+
+  @IsOptional() @IsString() @MaxLength(8) salePrefix?: string;
+  @IsOptional() @IsString() @MaxLength(8) orderPrefix?: string;
+
+  @IsOptional() @IsNumber() @Min(0) coldCakeMin?: number;
+  @IsOptional() @IsNumber() @Min(0) coldCakeMax?: number;
+
+  /** Id de la categoría de tortas frías (`coldCakeCategory` en el frontend). */
+  @IsOptional() @IsString() @MaxLength(64) coldCakeCategory?: string;
+
+  @IsOptional() @IsNumber() @Min(0) bsRounding?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(720) rateMaxAgeHours?: number;
+
+  /** Zona del día contable. La usa el trigger `set_business_date_*`. */
+  @IsOptional() @IsString() @MaxLength(60) timezone?: string;
+
+  @IsOptional() @IsObject() shortcuts?: Record<string, string>;
+}

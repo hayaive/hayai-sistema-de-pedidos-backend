@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "declaration": false,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "rootDir": "./src",
+    // `incremental` NO: `nest build` borra `dist/` antes de compilar
+    // (`deleteOutDir`), pero tsc consultaría su `.tsbuildinfo` y se saltaría los
+    // archivos que cree ya emitidos. Resultado: un `dist/` PARCIAL —comprobado, se
+    // quedó con un solo módulo— que arranca y falla en cuanto se pide una ruta que
+    // no se emitió. En un build de despliegue, rehacer todo cuesta segundos y esto
+    // cuesta un incidente.
+    "skipLibCheck": true,
+    "strict": true,
+    // Los DTO de class-validator declaran propiedades que llena el
+    // ValidationPipe, no el constructor: con esta bandera activada habria que
+    // sembrar cada campo con `!` sin ganar nada.
+    "strictPropertyInitialization": false,
+    "noImplicitAny": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,10 @@
+{
+  // Sólo para correr el seed con ts-node en desarrollo (`npm run db:seed:dev`).
+  // En Railway el seed se corre sobre el build (`npm run db:seed`).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*"]
+}
