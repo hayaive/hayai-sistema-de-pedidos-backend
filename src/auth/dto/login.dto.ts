@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsDefined,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -36,6 +37,7 @@ export class LoginDto {
   @MaxLength(200)
   password: string;
 
+  @IsDefined()
   @ValidateNested()
   @Type(() => LoginDeviceDto)
   device: LoginDeviceDto;
