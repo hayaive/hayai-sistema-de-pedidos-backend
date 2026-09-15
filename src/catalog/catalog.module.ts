@@ -13,7 +13,12 @@ import { ProductsService } from './products.service';
 
 /**
  * Global porque `sync` (los handlers de mutación), `sales` y `orders` necesitan
- * resolver precios, bandas y productos.
+ * resolver precios y productos.
+ *
+ * `PriceGroupsService` y su controlador siguen registrados **sólo por
+ * compatibilidad**: el mecanismo de grupos de precio se retiró en 2026-09 y no
+ * influye ya en ningún precio, pero las rutas se mantienen vivas mientras queden
+ * clientes v5 en circulación (ver `price-groups.service.ts`).
  */
 @Global()
 @Module({

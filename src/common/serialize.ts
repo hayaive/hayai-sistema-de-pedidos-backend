@@ -104,8 +104,11 @@ const priceOut = (p: ProductPrice | PriceGroupPrice) => ({
 
 /**
  * La `PriceRule` del frontend, reconstruida de las 4 columnas aplanadas.
- * Se preserva la distinción *sin regla* ≠ *con regla y sin banda*: sólo un grupo
- * **con banda** puede bloquear una venta (ARCHITECTURE.md §3.7).
+ *
+ * @deprecated 2026-09 · Grupos de precio retirados: ninguna regla de grupo se
+ * evalúa ya, ni para alertar ni para bloquear. Se sigue serializando tal cual
+ * para no cambiarle la forma del agregado a un cliente v5. Ver
+ * `PriceGroupsService`.
  */
 export function ruleOut(g: PriceGroup) {
   if (g.ruleMinUsd === null || g.ruleTargetUsd === null) return undefined;
@@ -120,6 +123,7 @@ export function ruleOut(g: PriceGroup) {
   });
 }
 
+/** @deprecated 2026-09 · Sólo compatibilidad v5. Ver `ruleOut`. */
 export function priceGroupOut(g: PriceGroup & { prices: PriceGroupPrice[] }) {
   return clean({
     id: g.id,
@@ -155,6 +159,9 @@ export function productOut(p: Product & { prices: ProductPrice[]; comboItems: Co
     bsOnly: p.bsOnly,
     bsPrice: num(p.bsPrice) ?? undefined,
     prices: p.prices.map(priceOut),
+    // @deprecated 2026-09 · La columna sigue en el esquema y se sigue enviando
+    // para no cambiar la forma del agregado, pero el precio efectivo del producto
+    // sale siempre de `prices`: ya no hay resolución por grupo.
     priceGroupId: opt(p.priceGroupId),
     isCombo: p.isCombo,
     comboItems: p.isCombo ? p.comboItems.map(comboItemOut) : undefined,
@@ -392,6 +399,13 @@ export function auditOut(a: AuditLog) {
 /**
  * `coldCakeCategory` (no `coldCakeCategoryId`) porque así se llama el campo en
  * `CompanySettings` del frontend. El nombre de la columna es otro; el wire manda.
+ *
+ * **La clave viaja SIEMPRE**, incluso cuando la columna está a NULL: sale como
+ * cadena vacía y `clean()` sólo borra `undefined`, nunca `''`. Es deliberado y no
+ * se puede relajar: un cliente que fusiona la configuración campo a campo
+ * conservaría su valor viejo si la clave se omitiera, y no se enteraría nunca de
+ * que la categoría dejó de estar apuntada (la banda pasó a colgar del producto
+ * genérico, no de la categoría; ver `PricingService.ruleOf`).
  */
 export function companyOut(c: CompanySettings) {
   return clean({

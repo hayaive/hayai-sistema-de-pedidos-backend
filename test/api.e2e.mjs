@@ -169,8 +169,22 @@ describe('Backend de pedidos · integración contra Postgres real', () => {
     // Lo que dejó el seed.
     assert.ok(b.priceTypes.length >= 2, 'faltan los tipos de precio del seed');
     assert.ok(b.paymentMethods.length >= 5, 'faltan las formas de pago del seed');
-    assert.ok(b.priceGroups.length >= 3, 'faltan los grupos de tortas frías');
     assert.equal(b.retiredProductCodes.length, 13, 'deben estar los 13 códigos retirados');
+    assert.ok(
+      b.categories.some((c) => c.id === 'cat-tortas-frias'),
+      'falta la categoría de tortas frías del seed',
+    );
+
+    // El seed ya NO siembra los tres grupos de precio: el mecanismo se retiró en
+    // 2026-09 y volver a sembrarlos resucitaría en cada arranque lo que la
+    // migración de datos limpia. La clave sigue viajando —y como array— porque un
+    // cliente v5 la espera en el agregado.
+    assert.ok(Array.isArray(b.priceGroups), '`priceGroups` debe seguir viajando');
+    assert.equal(
+      b.priceGroups.length,
+      0,
+      'una instalación nueva no debe traer ningún grupo de precio sembrado',
+    );
 
     // El usuario técnico no viaja y ningún hash sale del servidor.
     assert.ok(!b.users.some((u) => u.username === 'system'), 'el usuario técnico no debe viajar');
@@ -179,12 +193,17 @@ describe('Backend de pedidos · integración contra Postgres real', () => {
     // Sólo un tipo de precio por defecto (índice único parcial).
     assert.equal(b.priceTypes.filter((p) => p.isDefault).length, 1);
 
-    // El grupo genérico es el ÚNICO con banda: los diferenciados quedan fuera a
-    // propósito y por eso nunca bloquean una venta.
-    const generic = b.priceGroups.find((g) => g.id === 'pg-tortas-frias');
-    assert.ok(generic.rule?.band, 'el grupo genérico debe declarar banda');
-    const quesillo = b.priceGroups.find((g) => g.id === 'pg-torta-quesillo');
-    assert.equal(quesillo.rule, undefined, 'los diferenciados no declaran regla');
+    // `coldCakeCategory` viaja SIEMPRE, y vacía: el seed dejó de apuntarla porque
+    // la banda mínimo/máximo cuelga del producto genérico "Tortas Frías" y no de
+    // la categoría. Si la clave se omitiera, un cliente que fusiona la
+    // configuración campo a campo conservaría su valor viejo para siempre.
+    assert.ok(
+      'coldCakeCategory' in b.company,
+      '`company.coldCakeCategory` no puede omitirse aunque la columna esté a NULL',
+    );
+    assert.equal(b.company.coldCakeCategory, '');
+    assert.equal(typeof b.company.coldCakeMin, 'number');
+    assert.equal(typeof b.company.coldCakeMax, 'number');
 
     state.priceTypeId = b.priceTypes.find((p) => p.isDefault).id;
   });
@@ -218,11 +237,33 @@ describe('Backend de pedidos · integración contra Postgres real', () => {
     assert.equal(res.body.code, 'E2E01');
     assert.equal(res.body.stock, 0, '`stock` no debe poder llegar desde el cliente');
     assert.equal(typeof res.body.rev, 'number');
-    // El producto cae en la familia de tortas frías sin grupo declarado: hereda el
-    // precio general (invariante de `attachDefaultPriceGroup`).
-    assert.equal(res.body.priceGroupId, 'pg-tortas-frias');
+    // El producto cae en la familia de tortas frías y NO se engancha a ningún
+    // grupo: el reenganche automático se retiró con el mecanismo (2026-09). Su
+    // precio sale de `prices` y de ningún otro sitio.
+    assert.equal(res.body.priceGroupId, undefined, 'un producto nuevo no se engancha a un grupo');
+    assert.equal(res.body.prices.length, 1);
+    assert.equal(res.body.prices[0].amount, 1.2);
 
     state.productId = res.body.id;
+  });
+
+  it('un `priceGroupId` que ya no existe se degrada a null, no rechaza el alta', async () => {
+    // Un v5 con un `product.create` encolado desde antes de la migración de datos
+    // sigue mandando el grupo genérico. Rechazarlo sería `validation_failed`, que
+    // el cliente trata como PERMANENTE: descartaría el producto entero por un
+    // campo que ya no significa nada.
+    const res = await api('POST', '/products', {
+      expect: 201,
+      body: {
+        code: 'E2E02',
+        name: 'Alta encolada por un cliente v5',
+        categoryId: 'cat-tortas-frias',
+        priceGroupId: 'pg-tortas-frias',
+        prices: [{ priceTypeId: state.priceTypeId, amount: 1.3 }],
+      },
+    });
+    assert.equal(res.body.priceGroupId, undefined, 'un grupo inexistente debe caer a null');
+    assert.equal(res.body.prices[0].amount, 1.3, 'el precio propio del producto manda');
   });
 
   it('un código repetido se rechaza en línea, y uno retirado nunca se reutiliza', async () => {

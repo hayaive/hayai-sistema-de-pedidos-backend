@@ -3,20 +3,10 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
 import { Permission } from '../generated/prisma/enums';
 import {
-  COLD_CAKE_ALERT_USD,
   COLD_CAKE_CATEGORY_ID,
   COLD_CAKE_CATEGORY_NAME,
-  COLD_CAKE_GENERIC_GROUP_ID,
-  COLD_CAKE_GENERIC_PRICES,
-  COLD_CAKE_OREO_BROWNIE_GROUP_ID,
-  COLD_CAKE_OREO_BROWNIE_PRICES,
-  COLD_CAKE_QUESILLO_GROUP_ID,
-  COLD_CAKE_QUESILLO_PRICES,
-  COLD_CAKE_TARGET_USD,
-  OREO_BROWNIE_NAME,
   PRICE_TYPE_DETAL_ID,
   PRICE_TYPE_MAYOR_ID,
-  TORTA_QUESILLO_NAME,
 } from '../catalog/catalog.constants';
 
 /**
@@ -25,8 +15,11 @@ import {
  *
  * Qué siembra y qué NO:
  *  · SÍ: roles y permisos base, usuario administrador, formas de pago, tipos de
- *    precio (Mayor/Detal), la categoría y los tres grupos de precio de tortas
- *    frías, y la configuración de la empresa.
+ *    precio (Mayor/Detal), la categoría de tortas frías y la zona del día
+ *    contable.
+ *  · YA NO: los tres grupos de precio de la familia (mecanismo retirado en
+ *    2026-09) ni el apuntado de `cold_cake_category_id`. Volver a sembrarlos
+ *    resucitaría en cada arranque lo que la migración de datos limpia.
  *  · NO: el catálogo de productos ni los clientes de prueba. El catálogo real entra
  *    por `POST /admin/import` desde el dispositivo que hoy tiene el `localStorage`
  *    bueno (ARCHITECTURE.md §8): así se preservan los ids semánticos
@@ -205,84 +198,37 @@ export async function seed(prisma: PrismaClient, options: SeedOptions = {}) {
   }
   log(`${PAYMENT_METHODS.length} formas de pago`);
 
-  // ── Categoría y grupos de precio de tortas frías ───────────────────────────
+  // ── Categoría de tortas frías ──────────────────────────────────────────────
+  // La categoría se sigue sembrando porque los productos del catálogo importado
+  // la referencian por id.
+  //
+  // Lo que ya NO se siembra son los tres **grupos de precio** de la familia. El
+  // mecanismo se retiró en 2026-09: cada producto vuelve a tener precio propio en
+  // `product_prices`. Y no es sólo que sobren: la semilla corre en CADA arranque
+  // (`start:prod`), así que seguir sembrándolos resucitaría en el siguiente
+  // despliegue justo las filas que la migración de datos borra.
   await prisma.category.upsert({
     where: { id: COLD_CAKE_CATEGORY_ID },
     create: { id: COLD_CAKE_CATEGORY_ID, name: COLD_CAKE_CATEGORY_NAME, active: true },
     update: {},
   });
-
-  /**
-   * Los tres grupos de la familia. Sólo el genérico declara `band`: los dos
-   * diferenciados viven por encima de esa banda a propósito, y si la declararan
-   * bloquearían su propia venta (`lib/pricing.priceBandCheck`).
-   */
-  const groups = [
-    {
-      id: COLD_CAKE_GENERIC_GROUP_ID,
-      name: COLD_CAKE_CATEGORY_NAME,
-      prices: COLD_CAKE_GENERIC_PRICES,
-      rule: {
-        ruleMinUsd: COLD_CAKE_ALERT_USD,
-        ruleTargetUsd: COLD_CAKE_TARGET_USD,
-        ruleBandMinUsd: COLD_CAKE_ALERT_USD,
-        ruleBandMaxUsd: COLD_CAKE_TARGET_USD,
-      },
-    },
-    {
-      id: COLD_CAKE_OREO_BROWNIE_GROUP_ID,
-      name: OREO_BROWNIE_NAME,
-      prices: COLD_CAKE_OREO_BROWNIE_PRICES,
-      rule: null,
-    },
-    {
-      id: COLD_CAKE_QUESILLO_GROUP_ID,
-      name: TORTA_QUESILLO_NAME,
-      prices: COLD_CAKE_QUESILLO_PRICES,
-      rule: null,
-    },
-  ];
-
-  for (const group of groups) {
-    await prisma.priceGroup.upsert({
-      where: { id: group.id },
-      create: {
-        id: group.id,
-        name: group.name,
-        categoryId: COLD_CAKE_CATEGORY_ID,
-        active: true,
-        ...(group.rule ?? {}),
-      },
-      // Sólo se repara el vínculo con la categoría: los precios y la regla que el
-      // negocio haya editado se respetan.
-      update: { categoryId: COLD_CAKE_CATEGORY_ID },
-    });
-
-    // Los precios se siembran sólo si el grupo no tiene ninguno: sobreescribirlos
-    // devolvería el precio de venta a la semilla en cada despliegue.
-    const existingPrices = await prisma.priceGroupPrice.count({ where: { priceGroupId: group.id } });
-    if (existingPrices === 0) {
-      await prisma.priceGroupPrice.createMany({
-        data: [
-          { priceGroupId: group.id, priceTypeId: PRICE_TYPE_MAYOR_ID, amount: group.prices.mayor },
-          { priceGroupId: group.id, priceTypeId: PRICE_TYPE_DETAL_ID, amount: group.prices.detal },
-        ],
-      });
-    }
-  }
-  log(`${groups.length} grupos de precio de tortas frías`);
+  log('categoría de tortas frías');
 
   // ── Configuración de la empresa ────────────────────────────────────────────
-  // La fila la crea la migración; aquí sólo se apunta la categoría de la familia y
-  // se fija la zona del día contable. `saleNext`/`orderNext` NO se tocan nunca.
+  // La fila la crea la migración; aquí sólo se fija la zona del día contable.
+  // `saleNext`/`orderNext` NO se tocan nunca.
+  //
+  // `coldCakeCategoryId` tampoco se apunta ya, por el mismo motivo que los grupos:
+  // la banda cuelga del producto genérico "Tortas Frías" y no de la categoría
+  // (`PricingService.ruleOf`), la columna se quedó sin lectores, y reescribirla en
+  // cada arranque desharía la limpieza de la migración de datos.
   await prisma.companySettings.update({
     where: { id: 'singleton' },
     data: {
-      coldCakeCategoryId: COLD_CAKE_CATEGORY_ID,
       timezone: process.env.BUSINESS_TIMEZONE || 'America/Caracas',
     },
   });
-  log('configuración de la empresa apuntada a la familia de tortas frías');
+  log('zona horaria del día contable fijada');
 
   return { ok: true };
 }

@@ -61,6 +61,12 @@ export class CreateProductDto {
   @IsOptional() @IsBoolean() bsOnly?: boolean;
   @IsOptional() @IsNumber() @Min(0) bsPrice?: number;
 
+  /**
+   * @deprecated 2026-09 · Grupos de precio retirados. Se sigue aceptando —y
+   * guardando en la columna, que aún existe— para no rechazar el alta que encoló
+   * un cliente v5, pero un producto nuevo ya **no** se engancha solo a ningún
+   * grupo y su precio sale siempre de `prices`.
+   */
   @IsOptional() @IsString() @MaxLength(64) priceGroupId?: string;
 
   @IsOptional() @IsBoolean() isCombo?: boolean;
@@ -95,7 +101,10 @@ export class UpdateProductDto {
   @IsOptional() @IsBoolean() active?: boolean;
   @IsOptional() @IsBoolean() bsOnly?: boolean;
   @IsOptional() @IsNumber() @Min(0) bsPrice?: number;
-  /** `null` desvincula el producto de su grupo de precio. */
+  /**
+   * `null` desvincula el producto de su grupo de precio.
+   * @deprecated 2026-09 · Ver `CreateProductDto.priceGroupId`.
+   */
   @IsOptional() @IsString() @MaxLength(64) priceGroupId?: string | null;
   @IsOptional() @IsBoolean() isCombo?: boolean;
   @IsOptional() @IsBoolean() allowCustomization?: boolean;

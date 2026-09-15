@@ -25,11 +25,14 @@ export class UpdateCompanyDto {
   @IsOptional() @IsString() @MaxLength(8) salePrefix?: string;
   @IsOptional() @IsString() @MaxLength(8) orderPrefix?: string;
 
+  /**
+   * Banda de precio del producto genérico "Tortas Frías": umbral y objetivo.
+   * Desde 2026-09 **no** aplica a la categoría entera, sólo a ese producto
+   * (`PricingService.ruleOf`), y por eso `coldCakeCategory` ya no se declara
+   * aquí: llega, el ValidationPipe lo descarta y no se persiste.
+   */
   @IsOptional() @IsNumber() @Min(0) coldCakeMin?: number;
   @IsOptional() @IsNumber() @Min(0) coldCakeMax?: number;
-
-  /** Id de la categoría de tortas frías (`coldCakeCategory` en el frontend). */
-  @IsOptional() @IsString() @MaxLength(64) coldCakeCategory?: string;
 
   @IsOptional() @IsNumber() @Min(0) bsRounding?: number;
   @IsOptional() @IsInt() @Min(1) @Max(720) rateMaxAgeHours?: number;

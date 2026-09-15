@@ -21,6 +21,26 @@ export type PriceGroupAggregate = Prisma.PriceGroupGetPayload<{
   include: typeof PRICE_GROUP_INCLUDE;
 }>;
 
+/**
+ * Grupos de precio.
+ *
+ * @deprecated 2026-09 · **Mecanismo retirado.** Cada producto volvió a tener
+ * precio propio en `product_prices` y ningún precio ni ninguna regla de negocio
+ * se resuelve ya por grupo: `PricingService.ruleOf` mira el producto genérico y
+ * nada más, y `ProductsService.create` dejó de enganchar productos nuevos.
+ *
+ * El servicio, su controlador (`/price-groups`) y sus mutaciones de sync
+ * (`priceGroup.create/update`, `priceGroupPrice.set`) se mantienen vivos a
+ * propósito mientras dure el despliegue escalonado: el backend sale **antes** que
+ * el frontend, y un cliente v5 con cola pendiente que subiera una de esas
+ * mutaciones contra un servidor que ya no las conoce recibiría
+ * `validation_failed`, que es un rechazo **permanente** (`push.service.PERMANENT`)
+ * y le haría descartar la edición en lugar de reintentarla. Escriben sobre tablas
+ * que siguen existiendo, así que no rompen nada.
+ *
+ * Retirar todo el bloque —servicio, controlador, handlers, DTO, `priceGroups` en
+ * bootstrap/delta— cuando no queden clientes v5 y se borren las tablas.
+ */
 @Injectable()
 export class PriceGroupsService {
   constructor(
@@ -117,8 +137,11 @@ export class PriceGroupsService {
   }
 
   /**
-   * `priceGroupPrice.set`: LWW por celda `(grupo, tipo de precio)`. Cambiar aquí
-   * el precio cambia el de todos los miembros del grupo a la vez.
+   * `priceGroupPrice.set`: LWW por celda `(grupo, tipo de precio)`.
+   *
+   * @deprecated Ya no cambia el precio de nadie: tras la retirada del mecanismo,
+   * ningún producto resuelve su precio por grupo. Sigue escribiendo la fila para
+   * no rechazar la cola de un cliente v5.
    */
   async setPrice(
     user: AuthUser,
