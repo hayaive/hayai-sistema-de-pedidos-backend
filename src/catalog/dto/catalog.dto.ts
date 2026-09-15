@@ -41,7 +41,12 @@ export class UpdatePriceTypeDto {
   @IsOptional() @IsInt() @Min(0) position?: number;
 }
 
-/* ── Grupos de precio ────────────────────────────────────────────────────── */
+/* ── Grupos de precio ─────────────────────────────────────────────────────────
+ *
+ * @deprecated 2026-09 · Mecanismo retirado. Estos DTO sólo sostienen las rutas
+ * `/price-groups` y las mutaciones `priceGroup*` de sync, vivas mientras queden
+ * clientes v5 en circulación. Ver `PriceGroupsService`.
+ */
 
 export class PriceBandDto {
   @IsNumber() @Min(0) minUsd: number;
@@ -49,10 +54,15 @@ export class PriceBandDto {
 }
 
 /**
- * Regla de precio. La semántica que hay que preservar (§3.7):
+ * Regla de precio. La forma se preserva tal cual para no romper el wire de un
+ * cliente v5 (§3.7):
  *  · regla presente ⇔ `minUsd` y `targetUsd`;
- *  · banda presente ⇔ `band.minUsd` y `band.maxUsd`;
- *  · sólo un grupo CON banda puede bloquear una venta.
+ *  · banda presente ⇔ `band.minUsd` y `band.maxUsd`.
+ *
+ * Lo que ya NO vale: la banda de un grupo no bloquea ninguna venta. El bloqueo
+ * por banda se retiró en 2026-09 (`PricingService`) y la única banda que queda
+ * es la de `company_settings`, que aplica al producto genérico "Tortas Frías" y
+ * sólo genera alerta en el cliente.
  */
 export class PriceRuleDto {
   @IsNumber() @Min(0.0001) minUsd: number;

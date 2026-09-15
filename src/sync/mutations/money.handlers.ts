@@ -51,8 +51,9 @@ export class MoneyHandlers {
    * `sale.create`. Mueve inventario y consume los abonos del pedido.
    *
    * Una venta que llega de la cola **ya ocurrió**: se marca `offline` para que la
-   * banda de precio avise en lugar de bloquear (ver `SalesService.assertPriceBands`)
-   * y para que el ticket quede identificado como renumerable.
+   * falta de tasa BCV se audite en lugar de bloquear (ver
+   * `SalesService.assertSaleRate`) y para que el ticket quede identificado como
+   * renumerable.
    */
   private async saleCreate(ctx: MutationContext): Promise<HandlerOutcome> {
     const dto = parsePayload(CreateSaleDto, { createdAt: ctx.clientAt.toISOString(), ...ctx.payload });

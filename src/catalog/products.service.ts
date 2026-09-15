@@ -8,10 +8,8 @@ import { productOut } from '../common/serialize';
 import { Tx } from '../common/tx';
 import { AuthUser } from '../auth/auth.types';
 import { AuditService } from '../audit/audit.service';
-import { CompanyService } from '../company/company.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TombstonesService } from '../sync/tombstones.service';
-import { COLD_CAKE_GENERIC_GROUP_ID } from './catalog.constants';
 import {
   ComboItemInputDto,
   CreateProductDto,
@@ -28,7 +26,6 @@ export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly company: CompanyService,
     private readonly tombstones: TombstonesService,
   ) {}
 
@@ -97,7 +94,7 @@ export class ProductsService {
       if (existing) return { product: existing };
 
       await this.assertCategory(tx, dto.categoryId);
-      if (dto.priceGroupId) await this.assertPriceGroup(tx, dto.priceGroupId);
+      const priceGroupId = await this.resolvePriceGroup(tx, dto.priceGroupId);
 
       await this.assertCodeNotRetired(tx, dto.code);
       let code = dto.code;
@@ -115,12 +112,11 @@ export class ProductsService {
         throw invalid('Un producto con precio fijado en Bs necesita bsPrice');
       }
 
-      // Invariante del catálogo: un producto de la familia de tortas frías sin
-      // grupo propio entra al precio general, si ese grupo existe. Sin esto, un
-      // producto nuevo añadiría una cuarta unidad de precio a una familia que
-      // debe tener exactamente tres (`catalog.attachDefaultPriceGroup`).
-      const priceGroupId = await this.defaultPriceGroup(tx, dto.categoryId, dto.priceGroupId);
-
+      // Un producto nuevo NUNCA se engancha solo a un grupo de precio: desde
+      // 2026-09 cada producto tiene precio propio en `product_prices` y el
+      // mecanismo de grupos está retirado. El campo se sigue aceptando sólo si el
+      // cliente lo declara y el grupo todavía existe (ver `resolvePriceGroup`),
+      // mientras la columna exista (compatibilidad v5).
       await tx.product.create({
         data: {
           id,
@@ -185,7 +181,6 @@ export class ProductsService {
       }
 
       if (dto.categoryId) await this.assertCategory(tx, dto.categoryId);
-      if (dto.priceGroupId) await this.assertPriceGroup(tx, dto.priceGroupId);
       if (dto.code && dto.code !== current.code) await this.assertCodeNotRetired(tx, dto.code);
 
       const data: Prisma.ProductUpdateInput = {};
@@ -200,9 +195,11 @@ export class ProductsService {
       if (dto.bsPrice !== undefined)
         data.bsPrice = dto.bsPrice === null ? null : usdScale(dto.bsPrice, 'bsPrice');
       if (dto.priceGroupId !== undefined) {
-        data.priceGroup = dto.priceGroupId
-          ? { connect: { id: dto.priceGroupId } }
-          : { disconnect: true };
+        // `priceGroupId: null` es justo lo que manda la migración v6 del cliente
+        // para desvincular; un id que ya no existe acaba igual (ver
+        // `resolvePriceGroup`) en lugar de rechazar la mutación.
+        const groupId = await this.resolvePriceGroup(tx, dto.priceGroupId);
+        data.priceGroup = groupId ? { connect: { id: groupId } } : { disconnect: true };
       }
       if (dto.isCombo !== undefined) data.isCombo = dto.isCombo;
       if (dto.allowCustomization !== undefined) data.allowCustomization = dto.allowCustomization;
@@ -345,21 +342,6 @@ export class ProductsService {
     return `P-${randomUUID().slice(0, 8)}`;
   }
 
-  private async defaultPriceGroup(
-    tx: Tx,
-    categoryId: string,
-    declared?: string,
-  ): Promise<string | null> {
-    if (declared) return declared;
-    const company = await this.company.settings(tx);
-    if (!company.coldCakeCategoryId || categoryId !== company.coldCakeCategoryId) return null;
-    const generic = await tx.priceGroup.findUnique({
-      where: { id: COLD_CAKE_GENERIC_GROUP_ID },
-      select: { id: true },
-    });
-    return generic?.id ?? null;
-  }
-
   private async assertCodeNotRetired(tx: Tx, code: string): Promise<void> {
     const retired = await tx.retiredProductCode.findUnique({ where: { code } });
     if (retired) {
@@ -376,9 +358,24 @@ export class ProductsService {
     if (!row) throw invalid(`La categoría ${id} no existe`);
   }
 
-  private async assertPriceGroup(tx: Tx, id: string): Promise<void> {
+  /**
+   * El grupo de precio que declara el cliente, o `null`.
+   *
+   * @deprecated 2026-09 · Grupos de precio retirados. Un id **desconocido ya no
+   * se rechaza**: se degrada a `null`. Antes lanzaba `validation_failed`, que el
+   * cliente trata como rechazo **permanente** (`push.service.PERMANENT`) y le
+   * hace descartar la mutación de la cola. Después de la migración de datos que
+   * limpia `price_groups`, un v5 con un `product.create` encolado apuntando al
+   * grupo genérico perdería el producto entero por un campo que ya no significa
+   * nada — exactamente lo que se quiere evitar manteniendo vivas las rutas de
+   * compatibilidad (ver `PriceGroupsService`). La FK de la columna es
+   * `onDelete: SetNull`, así que guardar `null` es lo que la base habría hecho
+   * sola al borrarse el grupo.
+   */
+  private async resolvePriceGroup(tx: Tx, id?: string | null): Promise<string | null> {
+    if (!id) return null;
     const row = await tx.priceGroup.findUnique({ where: { id }, select: { id: true } });
-    if (!row) throw invalid(`El grupo de precio ${id} no existe`);
+    return row?.id ?? null;
   }
 
   private async assertPriceType(tx: Tx, id: string): Promise<void> {

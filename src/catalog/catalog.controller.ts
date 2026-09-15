@@ -175,6 +175,12 @@ export class PriceTypesController {
   }
 }
 
+/**
+ * @deprecated 2026-09 · Compatibilidad con clientes v5. El mecanismo de grupos de
+ * precio se retiró; estas rutas siguen respondiendo sobre tablas que todavía
+ * existen, pero ya no influyen en el precio de ningún producto. Ver
+ * `PriceGroupsService` para el porqué de mantenerlas vivas.
+ */
 @Controller('price-groups')
 export class PriceGroupsController {
   constructor(private readonly priceGroups: PriceGroupsService) {}
@@ -205,8 +211,10 @@ export class PriceGroupsController {
   }
 
   /**
-   * El precio del grupo por celda. Cambiarlo cambia el precio de **todos** sus
-   * miembros a la vez: es el "precio general".
+   * El precio del grupo por celda.
+   *
+   * @deprecated Ya no cambia el precio de sus miembros: cada producto tiene el
+   * suyo en `product_prices`. Se mantiene para no rechazar la cola de un v5.
    */
   @Post(':id/prices')
   @RequirePermission('edit_inventory', 'manage_settings')

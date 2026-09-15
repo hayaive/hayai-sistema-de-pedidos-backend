@@ -132,7 +132,15 @@ export class CatalogHandlers {
     return { status: 'applied', entityId: product.id, serverEntity: productOut(product) };
   }
 
-  /** `priceGroupPrice.set`. LWW por celda: Mayor y Detal sobreviven los dos. */
+  /**
+   * `priceGroupPrice.set`. LWW por celda: Mayor y Detal sobreviven los dos.
+   *
+   * @deprecated 2026-09 · Grupos de precio retirados. Los tres handlers de
+   * `priceGroup*` se mantienen registrados sólo mientras queden clientes v5:
+   * retirarlos haría que `MutationRegistry.resolve` devolviera `validation_failed`,
+   * un rechazo **permanente**, y el cliente descartaría la edición encolada en vez
+   * de reintentarla. Ver `PriceGroupsService`.
+   */
   private async priceGroupPriceSet(ctx: MutationContext): Promise<HandlerOutcome> {
     const priceGroupId = requireId(ctx.payload, 'priceGroupId');
     const dto = parsePayload(SetPriceDto, omit(ctx.payload, ['priceGroupId', 'id']));

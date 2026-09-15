@@ -77,14 +77,15 @@ export class CompanyService {
     if (dto.coldCakeMin !== undefined) data.coldCakeMin = usdScale(dto.coldCakeMin, 'coldCakeMin');
     if (dto.coldCakeMax !== undefined) data.coldCakeMax = usdScale(dto.coldCakeMax, 'coldCakeMax');
     if (dto.bsRounding !== undefined) data.bsRounding = bsScale(dto.bsRounding, 'bsRounding');
-    if (dto.coldCakeCategory !== undefined) {
-      const categoryId = dto.coldCakeCategory || null;
-      if (categoryId) {
-        const cat = await this.prisma.category.findUnique({ where: { id: categoryId } });
-        if (!cat) throw invalid('La categoría de tortas frías no existe');
-      }
-      data.coldCakeCategoryId = categoryId;
-    }
+
+    // `coldCakeCategory` ya NO se escribe. Desde 2026-09 la banda mínimo/máximo
+    // no aplica a la categoría entera sino sólo al producto genérico "Tortas
+    // Frías" (`PricingService.ruleOf`), así que `cold_cake_category_id` se quedó
+    // sin lectores. El campo tampoco se declara ya en el DTO: el ValidationPipe
+    // (`whitelist: true`, sin `forbidNonWhitelisted`) lo descarta en silencio, de
+    // modo que un cliente v5 que lo siga mandando guarda el resto de sus ajustes
+    // sin error en lugar de recibir un 400. La columna sigue en el esquema y se
+    // sigue devolviendo en `companyOut` hasta que se retire en una fase posterior.
 
     // El CHECK `price_groups_target_ge_min_ck` tiene su gemelo aquí: la
     // migración v2 del frontend existió para arreglar un objetivo por debajo del

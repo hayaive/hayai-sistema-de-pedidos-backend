@@ -11,7 +11,6 @@ import { businessDateToUtc, clampClientTime, isBusinessDate } from '../common/ti
 import { Tx } from '../common/tx';
 import { AuditService } from '../audit/audit.service';
 import { AuthUser } from '../auth/auth.types';
-import { PricingService } from '../catalog/pricing.service';
 import { CompanyService } from '../company/company.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DepositsService } from '../orders/deposits.service';
@@ -49,7 +48,6 @@ export class SalesService {
     private readonly prisma: PrismaService,
     private readonly company: CompanyService,
     private readonly rates: RatesService,
-    private readonly pricing: PricingService,
     private readonly inventory: InventoryService,
     private readonly deposits: DepositsService,
     private readonly audit: AuditService,
@@ -112,7 +110,7 @@ export class SalesService {
    *  4. Los abonos vigentes del pedido entran como pagos con su fecha y tasa
    *     originales, de modo que el cierre los cuenta el día en que entraron.
    *  5. Los pagos tienen que cubrir el total (con tolerancia de céntimos).
-   *  6. Banda de precio: sólo bloquea en línea. Ver `assertPriceBands`.
+   *  6. Sin tasa BCV vigente no se vende en línea. Ver `assertSaleRate`.
    *  7. Cada línea que no sea combo descuenta inventario en la misma transacción.
    */
   async create(
@@ -127,8 +125,6 @@ export class SalesService {
 
       const existing = await tx.sale.findUnique({ where: { id }, include: SALE_INCLUDE });
       if (existing) return { sale: existing, duplicate: true };
-
-      const company = await this.company.settings(tx);
 
       // ── 1 · Pedido: un pedido no se factura dos veces ──────────────────────
       let order = null;
@@ -166,8 +162,8 @@ export class SalesService {
       const snapshot = await this.resolveSnapshot(tx, dto);
       const { totalUsd, totalBs } = totalsOf(lines, snapshot.usd);
 
-      // ── 3 · Banda de precio ────────────────────────────────────────────────
-      await this.assertPriceBands(tx, lines, products, snapshot.usd, company, { offline, user });
+      // ── 3 · Tasa BCV ───────────────────────────────────────────────────────
+      await this.assertSaleRate(tx, id, snapshot.usd, { offline, user });
 
       // ── 4 · Pagos: los abonos del pedido primero ───────────────────────────
       // Los abonos los inyecta SIEMPRE el servidor, nunca el cliente: es la única
@@ -471,50 +467,43 @@ export class SalesService {
   }
 
   /**
-   * Banda de precio. **Sólo bloquean los grupos que declaran una** (el precio
-   * general de tortas frías); los sabores diferenciados viven por encima de esa
-   * banda a propósito y nunca se validan contra ella.
+   * Una venta sin tasa BCV vigente no se puede asentar en línea.
    *
-   * Decisión tomada aquí, que ARCHITECTURE.md no fija: una venta que llega de la
-   * **cola offline no se bloquea** por la banda, se audita. Esa venta ya ocurrió y
-   * el dinero ya entró; rechazarla sería perderla del registro, que es justo lo
-   * que el §5 prohíbe ("el dinero que ya entró no se pierde"). En línea sí
-   * bloquea, igual que el frontend.
+   * Sustituye al viejo bloqueo por banda de precio (retirado en 2026-09). Ese
+   * bloqueo decía "el precio queda fuera del rango permitido", pero el algoritmo
+   * corregía el importe en Bs hacia dentro de la banda antes de validar: en la
+   * práctica sólo fallaba **cuando no había tasa**, con un mensaje que no
+   * explicaba el problema real. Éste sí lo explica.
+   *
+   * Sin tasa, `rateUsd` se asienta en 0 y el total en Bs del comprobante sale 0:
+   * el cierre del día deja de cuadrar y el ticket no se puede reimprimir con la
+   * tasa real. Por eso se bloquea antes de escribir nada.
+   *
+   * Misma política que tenía la banda, y por la misma razón del §5: una venta que
+   * llega de la **cola offline no se bloquea**, se audita. Ese dinero ya entró y
+   * rechazarla sería perderla del registro. Los cobros en Bs siguen teniendo su
+   * propia validación por pago en `buildPayments`, que sí es innegociable porque
+   * sin tasa no hay equivalente en USD que asentar.
    */
-  private async assertPriceBands(
+  private async assertSaleRate(
     tx: Tx,
-    lines: { productId: string; name: string; unitPriceUsd: Dec }[],
-    products: Map<string, { id: string; priceGroupId: string | null; categoryId: string }>,
+    saleId: string,
     rate: Dec,
-    company: Parameters<PricingService['priceBandCheck']>[3],
     ctx: { offline: boolean; user: AuthUser },
   ): Promise<void> {
-    for (const line of lines) {
-      const product = products.get(line.productId);
-      if (!product) continue;
+    if (rate.gt(0)) return;
 
-      const check = await this.pricing.priceBandCheck(
-        product as never,
-        line.unitPriceUsd,
-        rate,
-        company,
-        tx,
-      );
-      if (!check.enforced || check.ok) continue;
+    const message = 'No se puede registrar la venta sin una tasa BCV vigente';
+    if (!ctx.offline) throw invalid(message);
 
-      const message = `"${line.name}" queda fuera del rango permitido de $${check.min.toFixed(2)} – $${check.max.toFixed(2)}`;
-
-      if (!ctx.offline) throw invalid(message);
-
-      this.log.warn(`Venta offline fuera de banda, se acepta y se audita: ${message}`);
-      await this.audit.log(
-        ctx.user,
-        'venta_fuera_de_banda',
-        'product',
-        line.productId,
-        { unitPriceUsd: line.unitPriceUsd.toNumber(), min: check.min.toNumber(), max: check.max.toNumber() },
-        { tx },
-      );
-    }
+    this.log.warn(`Venta offline sin tasa BCV, se acepta y se audita: ${saleId}`);
+    await this.audit.log(
+      ctx.user,
+      'venta_sin_tasa',
+      'sale',
+      saleId,
+      { rateUsd: rate.toNumber() },
+      { tx },
+    );
   }
 }

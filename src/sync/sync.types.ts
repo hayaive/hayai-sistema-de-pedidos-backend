@@ -10,6 +10,9 @@ export type MutationEntity =
   | 'customer'
   | 'product'
   | 'productPrice'
+  // @deprecated 2026-09 · Grupos de precio retirados. Se siguen aceptando para no
+  // rechazar como permanente la cola de un cliente v5 durante el despliegue
+  // escalonado (ver `PriceGroupsService`); ya no afectan a ningún precio.
   | 'priceGroupPrice'
   | 'priceGroup'
   | 'rate'
