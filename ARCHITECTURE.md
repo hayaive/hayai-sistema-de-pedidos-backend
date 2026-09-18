@@ -599,6 +599,10 @@ GET  /sales/:id           POST /sales     POST /sales/:id/void
 GET  /rates    ?source=   GET /rates/current      POST /rates
 POST /rates/fetch          -- trae la tasa oficial DESDE EL SERVIDOR
 
+GET  /payment-methods     POST /payment-methods   PATCH /payment-methods/:id
+DELETE /payment-methods/:id → 409 si tiene pagos/abonos/líneas de cierre;
+                               desactívala (active = false) en su lugar
+
 GET  /closures/draft?date=YYYY-MM-DD   -- borrador autoritativo del cierre
 POST /closures            GET /closures ?from=&to=
 

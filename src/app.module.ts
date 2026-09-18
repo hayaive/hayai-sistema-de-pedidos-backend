@@ -17,6 +17,7 @@ import { DevicesModule } from './devices/devices.module';
 import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RatesModule } from './rates/rates.module';
 import { SalesModule } from './sales/sales.module';
@@ -57,6 +58,7 @@ import { UsersModule } from './users/users.module';
     CustomersModule,
     InventoryModule,
     RatesModule,
+    PaymentMethodsModule,
     OrdersModule,
     SalesModule,
     ClosuresModule,
