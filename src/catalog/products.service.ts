@@ -8,6 +8,7 @@ import { productOut } from '../common/serialize';
 import { Tx } from '../common/tx';
 import { AuthUser } from '../auth/auth.types';
 import { AuditService } from '../audit/audit.service';
+import { CompanyService } from '../company/company.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TombstonesService } from '../sync/tombstones.service';
 import {
@@ -18,6 +19,7 @@ import {
   SetPriceDto,
   UpdateProductDto,
 } from './dto/product.dto';
+import { nextProductCode } from './product-code';
 
 export type ProductAggregate = Prisma.ProductGetPayload<{ include: typeof PRODUCT_INCLUDE }>;
 
@@ -27,6 +29,7 @@ export class ProductsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly tombstones: TombstonesService,
+    private readonly company: CompanyService,
   ) {}
 
   /** Relee la raíz para devolver su `rev` nuevo tras tocar filas hijas (§4.3). */
@@ -78,7 +81,11 @@ export class ProductsService {
    *
    * Devuelve además `renumbered` cuando hubo que recodificar: dos dispositivos
    * offline pueden generar el mismo `code`, que es una clave de negocio, y el
-   * cliente necesita reapuntar su copia local (§3.1).
+   * cliente necesita reapuntar su copia local (§3.1). Con `allowRecode` (vía
+   * sync) un código **retirado** se recodifica igual que uno tomado, en vez de
+   * rechazarse: perder el producto entero por un choque de nombres offline es
+   * peor que reasignarle un código libre. La vía HTTP directa (sin
+   * `allowRecode`) sigue devolviendo 409 `retired_code`/`conflict`.
    */
   async create(
     user: AuthUser,
@@ -96,15 +103,30 @@ export class ProductsService {
       await this.assertCategory(tx, dto.categoryId);
       const priceGroupId = await this.resolvePriceGroup(tx, dto.priceGroupId);
 
-      await this.assertCodeNotRetired(tx, dto.code);
+      // Un código retirado o ya tomado se trata igual cuando `allowRecode`
+      // viene de la vía de sync (§5, ARCHITECTURE.md): dos dispositivos
+      // offline pueden generar el mismo código, o reusar sin saberlo uno que
+      // ya se retiró, y el producto no se pierde por eso, se recodifica. La
+      // vía HTTP directa (sin `allowRecode`) sigue rechazando ambos casos: un
+      // humano tecleando un código sabe cuál quería.
       let code = dto.code;
       let renumbered: { from: string; to: string } | undefined;
-      const taken = await tx.product.findUnique({ where: { code }, select: { id: true } });
-      if (taken) {
+      const retired = await tx.retiredProductCode.findUnique({ where: { code } });
+      const taken = retired
+        ? null
+        : await tx.product.findUnique({ where: { code }, select: { id: true } });
+      if (retired || taken) {
         if (!opts.allowRecode) {
+          if (retired) {
+            throw new AppError(
+              'retired_code',
+              `El código ${code} está retirado y no se puede reutilizar`,
+              { formerName: retired.formerName },
+            );
+          }
           throw new AppError('conflict', `El código ${code} ya está en uso`);
         }
-        code = await this.nextFreeCode(tx, code);
+        code = await this.nextFreeCode(tx);
         renumbered = { from: dto.code, to: code };
       }
 
@@ -324,22 +346,25 @@ export class ProductsService {
   // ── Auxiliares ─────────────────────────────────────────────────────────────
 
   /**
-   * Siguiente código libre de la serie (`P001`, `P002`…). Los **retirados cuentan
-   * como ocupados** aunque su producto ya no exista (`catalog.nextFreeCode`).
+   * Código sugerido: el menor número libre ≥ piso en la serie configurable de
+   * Ajustes (`company_settings.product_code_prefix/digits/start`, decisión de
+   * J.O.R.B.I). El piso **no es un contador**: esta lectura no lo avanza, así
+   * que dar de alta un producto nunca mueve `company_settings.rev`. Los
+   * **retirados cuentan como ocupados** aunque su producto ya no exista.
    */
-  async nextFreeCode(tx: Tx, preferred: string): Promise<string> {
-    const [products, retired] = await Promise.all([
+  async nextFreeCode(tx: Tx): Promise<string> {
+    const [settings, products, retired] = await Promise.all([
+      this.company.settings(tx),
       tx.product.findMany({ select: { code: true } }),
       tx.retiredProductCode.findMany({ select: { code: true } }),
     ]);
-    const used = new Set([...products.map((p) => p.code), ...retired.map((r) => r.code)]);
+    const used = [...products.map((p) => p.code), ...retired.map((r) => r.code)];
 
-    if (!used.has(preferred)) return preferred;
-    for (let n = 1; n < 1000; n++) {
-      const candidate = 'P' + String(n).padStart(3, '0');
-      if (!used.has(candidate)) return candidate;
-    }
-    return `P-${randomUUID().slice(0, 8)}`;
+    return nextProductCode(used, {
+      prefix: settings.productCodePrefix,
+      digits: settings.productCodeDigits,
+      start: settings.productCodeStart,
+    });
   }
 
   private async assertCodeNotRetired(tx: Tx, code: string): Promise<void> {

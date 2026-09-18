@@ -27,7 +27,8 @@
     "db:drift": "prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script",
     "db:seed": "node dist/seed/seed.cli.js",
     "db:seed:dev": "ts-node --project tsconfig.seed.json src/seed/seed.cli.ts",
-    "test:e2e": "node --test test/*.e2e.mjs"
+    "test:e2e": "node --test test/*.e2e.mjs",
+    "test:unit": "node --test test/unit/*.test.ts test/unit/*.test.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.3",

@@ -38,7 +38,17 @@ if (!isLocal && process.env.ALLOW_DESTRUCTIVE_VERIFY !== "yes") {
   process.exit(1);
 }
 
-const MIGRATION = path.join(__dirname, "migrations", "20260912120000_init", "migration.sql");
+const MIGRATIONS_DIR = path.join(__dirname, "migrations");
+// Todas las migraciones, en orden: el timestamp del nombre de carpeta ya las
+// ordena lexicográficamente. Se aplican todas para que las migraciones
+// posteriores a la inicial (ALTER sobre tablas que la inicial crea) también
+// queden verificadas contra un Postgres real.
+const MIGRATIONS = fs
+  .readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+  .filter((d) => d.isDirectory())
+  .map((d) => d.name)
+  .sort()
+  .map((name) => path.join(MIGRATIONS_DIR, name, "migration.sql"));
 
 let pass = 0;
 const fails = [];
@@ -64,14 +74,17 @@ async function main() {
   await c.connect();
   await c.query("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;");
 
-  // ── 1 · La migración aplica ────────────────────────────────────────────────
-  try {
-    await c.query(fs.readFileSync(MIGRATION, "utf8"));
-    ok("migration.sql aplica sin errores");
-  } catch (e) {
-    bad("migration.sql aplica", e.message);
-    await c.end();
-    return report();
+  // ── 1 · Las migraciones aplican, en orden ──────────────────────────────────
+  for (const migration of MIGRATIONS) {
+    const label = path.basename(path.dirname(migration));
+    try {
+      await c.query(fs.readFileSync(migration, "utf8"));
+      ok(`${label}/migration.sql aplica sin errores`);
+    } catch (e) {
+      bad(`${label}/migration.sql aplica`, e.message);
+      await c.end();
+      return report();
+    }
   }
 
   const tables = await c.query(
@@ -87,6 +100,17 @@ async function main() {
   if (seeded.u === 1 && seeded.cs === 1 && seeded.rc === 13)
     ok("filas de infraestructura (usuario system, singleton, 13 códigos retirados)");
   else bad("filas de infraestructura", JSON.stringify(seeded));
+
+  // El backfill de la migración de secuencia de códigos calcula el piso a
+  // partir de lo que ya está en circulación: sólo hay sembrados los 13
+  // códigos retirados P001..P013 en este punto (todavía no hay productos ni
+  // líneas de venta/pedido), así que el piso tiene que quedar en 14.
+  const codeSeq = (await c.query(
+    `SELECT product_code_prefix p, product_code_digits d, product_code_start s FROM company_settings WHERE id='singleton'`,
+  )).rows[0];
+  if (codeSeq.p === "P" && codeSeq.d === 3 && codeSeq.s === 14)
+    ok(`el backfill deja el piso en el primer número libre tras los retirados sembrados (${codeSeq.p}/${codeSeq.d}/${codeSeq.s})`);
+  else bad("backfill de product_code_start", JSON.stringify(codeSeq));
 
   // ── 2 · Fixture mínimo ─────────────────────────────────────────────────────
   await c.query(`
@@ -272,6 +296,25 @@ async function main() {
   // ── 7 · Resto de invariantes ───────────────────────────────────────────────
   await expectError(c, "INSERT INTO company_settings (id,name,updated_at) VALUES ('otra','X',now())",
     "company_settings es fila única", "singleton");
+  await expectError(c, "UPDATE company_settings SET product_code_prefix='p1' WHERE id='singleton'",
+    "el prefijo de código de producto no puede ser minúscula ni terminar en dígito", "product_code_prefix_ck");
+  await expectError(c, "UPDATE company_settings SET product_code_prefix='1P' WHERE id='singleton'",
+    "el prefijo de código de producto tiene que empezar con letra", "product_code_prefix_ck");
+  await expectError(c, "UPDATE company_settings SET product_code_digits=0 WHERE id='singleton'",
+    "los dígitos del código de producto están acotados (mínimo 1)", "product_code_digits_ck");
+  await expectError(c, "UPDATE company_settings SET product_code_digits=7 WHERE id='singleton'",
+    "los dígitos del código de producto están acotados (máximo 6)", "product_code_digits_ck");
+  await expectError(c, "UPDATE company_settings SET product_code_start=0 WHERE id='singleton'",
+    "el piso del código de producto no puede ser menor a 1", "product_code_start_ck");
+  await expectError(c, "UPDATE company_settings SET product_code_start=100000000 WHERE id='singleton'",
+    "el piso del código de producto está acotado (máximo 99999999)", "product_code_start_ck");
+  await c.query("UPDATE company_settings SET product_code_prefix='PX', product_code_digits=4, product_code_start=50 WHERE id='singleton'");
+  const codeSeqOk = (await c.query(
+    `SELECT product_code_prefix p, product_code_digits d, product_code_start s FROM company_settings WHERE id='singleton'`,
+  )).rows[0];
+  if (codeSeqOk.p === "PX" && codeSeqOk.d === 4 && codeSeqOk.s === 50)
+    ok("un prefijo/dígitos/piso válidos se guardan");
+  else bad("guardar prefijo/dígitos/piso válidos", JSON.stringify(codeSeqOk));
   await expectError(c, "INSERT INTO customers (id,cedula,name,updated_at) VALUES ('c2','v-999','x',now())",
     "una cédula sin normalizar se rechaza", "cedula_upper");
   await expectError(c, "INSERT INTO price_groups (id,name,rule_min_usd,updated_at) VALUES ('pg-x','X',1.10,now())",
