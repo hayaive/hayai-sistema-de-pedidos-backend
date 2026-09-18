@@ -152,6 +152,8 @@ export class ProductsService {
           active: dto.active ?? true,
           bsOnly: dto.bsOnly ?? false,
           bsPrice: dto.bsPrice === undefined ? null : usdScale(dto.bsPrice, 'bsPrice'),
+          bsPrices: dto.bsPrices?.length ? await this.bsPricesJson(tx, dto.bsPrices) : undefined,
+          priceBand: dto.priceBand ?? false,
           priceGroupId,
           isCombo: dto.isCombo ?? false,
           allowCustomization: dto.allowCustomization ?? false,
@@ -216,6 +218,8 @@ export class ProductsService {
       if (dto.bsOnly !== undefined) data.bsOnly = dto.bsOnly;
       if (dto.bsPrice !== undefined)
         data.bsPrice = dto.bsPrice === null ? null : usdScale(dto.bsPrice, 'bsPrice');
+      if (dto.bsPrices !== undefined) data.bsPrices = await this.bsPricesJson(tx, dto.bsPrices);
+      if (dto.priceBand !== undefined) data.priceBand = dto.priceBand;
       if (dto.priceGroupId !== undefined) {
         // `priceGroupId: null` es justo lo que manda la migración v6 del cliente
         // para desvincular; un id que ya no existe acaba igual (ver
@@ -406,6 +410,28 @@ export class ProductsService {
   private async assertPriceType(tx: Tx, id: string): Promise<void> {
     const row = await tx.priceType.findUnique({ where: { id }, select: { id: true } });
     if (!row) throw invalid(`El tipo de precio ${id} no existe`);
+  }
+
+  /**
+   * Precios en Bs por tipo de precio de un producto `bsOnly` (Mayor, Detal…),
+   * validados igual que `prices` —tipos existentes y sin repetir— y guardados
+   * como arreglo JSON `[{ priceTypeId, amount }]` con los montos en Bs.
+   *
+   * Viven aparte de `product_prices` (que son USD) para no reinterpretar la
+   * moneda de filas existentes. Un producto `bsOnly` sin esta lista sigue
+   * usando `bs_price` para todos los tipos, como antes.
+   */
+  private async bsPricesJson(tx: Tx, prices: PriceInputDto[]): Promise<Prisma.InputJsonValue> {
+    const ids = new Set<string>();
+    for (const p of prices) {
+      if (ids.has(p.priceTypeId)) throw invalid(`El tipo de precio ${p.priceTypeId} viene repetido`);
+      ids.add(p.priceTypeId);
+      await this.assertPriceType(tx, p.priceTypeId);
+    }
+    return prices.map((p) => ({
+      priceTypeId: p.priceTypeId,
+      amount: usdScale(p.amount, 'precio en Bs').toNumber(),
+    }));
   }
 
   private async writePrices(

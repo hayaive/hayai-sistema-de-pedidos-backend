@@ -33,12 +33,17 @@ export interface ApplyMovementInput {
  *
  * `inventory_movements` es la fuente de verdad de la existencia y
  * `products.stock` su materialización: los dos se mueven **en la misma
- * transacción**, y `stock` no lo escribe ningún cliente. Los deltas conmutan, así
- * que el merge offline no pierde ventas.
+ * transacción**, y `stock` no lo escribe ningún cliente. `entrada` y `ajuste`
+ * conmutan; una `salida` se recorta al stock disponible en el momento de
+ * aplicar, así que el orden de aplicación sí importa para cuánto se descuenta
+ * (nunca para que el resultado deje de cuadrar con el ledger).
  *
- * La regla que de verdad importa aquí: un `ajuste` se resuelve **en el momento de
- * aplicar**, no en el de capturar. Un ajuste creado offline a las 9:00 que llega
- * a las 18:00 no borra las ventas que ocurrieron entre medias.
+ * La regla del negocio: **el stock nunca queda negativo**. Se puede vender sin
+ * existencia (la venta no se bloquea), pero lo que de verdad se descuenta es
+ * `min(qty, stock)`; el faltante ("vendido sin existencia") es derivable como
+ * `qty + delta`. Un `ajuste` se resuelve **en el momento de aplicar**, no en el
+ * de capturar. Un ajuste creado offline a las 9:00 que llega a las 18:00 no
+ * borra las ventas que ocurrieron entre medias.
  */
 @Injectable()
 export class InventoryService {
@@ -55,13 +60,20 @@ export class InventoryService {
   async apply(tx: Tx, input: ApplyMovementInput): Promise<InventoryMovement> {
     const id = input.id ?? randomUUID();
 
+    // Bloqueo de fila ANTES de la idempotencia: dos asientos concurrentes sobre
+    // el mismo producto se serializan aquí, así que el segundo lee el stock que
+    // dejó el primero en vez de un `SELECT` suelto que pisaría su escritura
+    // (lost-update). `FOR NO KEY UPDATE` alcanza porque no borramos ni tocamos
+    // la PK de `products`, y no sube el nivel de aislamiento de la transacción.
+    const locked = await tx.$queryRaw<{ stock: string }[]>`
+      SELECT "stock"::text AS "stock" FROM "products" WHERE "id" = ${input.productId} FOR NO KEY UPDATE
+    `;
+    if (locked.length === 0) throw invalid(`El producto ${input.productId} no existe`);
+
     // Idempotencia por PK: reenviar la misma mutación offline no duplica el
     // asiento ni mueve el stock dos veces.
     const existing = await tx.inventoryMovement.findUnique({ where: { id } });
     if (existing) return existing;
-
-    const product = await tx.product.findUnique({ where: { id: input.productId } });
-    if (!product) throw invalid(`El producto ${input.productId} no existe`);
 
     const captured = qtyScale(input.qty, 'cantidad');
     if (captured.lt(0)) throw invalid('La cantidad no puede ser negativa');
@@ -69,11 +81,12 @@ export class InventoryService {
       throw invalid('Una entrada o salida tiene que mover una cantidad mayor que cero');
     }
 
-    const stockNow = dec(product.stock);
+    const stockNow = dec(locked[0].stock);
 
     // `delta` y `stockAfter` los calcula el SERVIDOR, nunca el cliente. Los CHECK
     // `inventory_movements_delta_ck` verifican esta misma aritmética en la base:
-    //   entrada → delta = +qty · salida → delta = −qty · ajuste → stockAfter = qty
+    //   entrada → delta = +qty · ajuste → stockAfter = qty
+    //   salida  → se recorta al stock disponible, nunca deja el stock negativo
     let delta: Dec;
     let stockAfter: Dec;
     switch (input.type) {
@@ -81,10 +94,15 @@ export class InventoryService {
         delta = captured;
         stockAfter = stockNow.plus(captured);
         break;
-      case 'salida':
-        delta = captured.negated();
-        stockAfter = stockNow.minus(captured);
+      case 'salida': {
+        // Se descuenta lo que de verdad hay: una salida (venta o manual) mayor
+        // al stock disponible NO se rechaza, se recorta. El faltante ("vendido
+        // sin existencia") queda derivable como `qty + delta`.
+        const taken = Dec.min(captured, Dec.max(stockNow, 0));
+        delta = taken.negated();
+        stockAfter = stockNow.minus(taken);
         break;
+      }
       case 'ajuste':
         // Aquí está el "se resuelve al aplicar": el delta sale del stock ACTUAL,
         // no del que veía el dispositivo cuando se capturó.
@@ -113,8 +131,8 @@ export class InventoryService {
       },
     });
 
-    // `stock` puede quedar negativo a propósito: un POS tiene que poder vender lo
-    // que el conteo dice que no hay y cuadrarlo después con un ajuste.
+    // `stockAfter` ya viene recortado a >= 0 (CHECK `products_stock_nonneg_ck`
+    // lo respalda en la base).
     await tx.product.update({
       where: { id: input.productId },
       data: { stock: qtyScale(stockAfter, 'stock') },
