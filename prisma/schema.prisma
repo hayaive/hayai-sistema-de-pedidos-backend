@@ -136,6 +136,8 @@ enum SyncEntity {
   role
   payment_method
   order
+  /// Cierre reabierto (se borra para poder volver a cerrar ese día).
+  closure
 
   @@map("sync_entity")
 }
@@ -351,6 +353,11 @@ model Product {
   /// Producto con precio fijado en Bs: no se convierte desde USD.
   bsOnly  Boolean  @default(false) @map("bs_only")
   bsPrice Decimal? @map("bs_price") @db.Decimal(18, 4)
+
+  /// Precio sujeto al rango de la empresa (`company_settings.cold_cake_min/max`):
+  /// si su equivalente en USD cae por debajo del mínimo, el cliente avisa y
+  /// propone subirlo al máximo. Lo marca el negocio producto por producto.
+  priceBand Boolean @default(false) @map("price_band")
 
   /// Si está definido, el precio de venta lo dicta el grupo y NO `prices`.
   /// `prices` se conserva siempre como respaldo histórico.

@@ -5,12 +5,13 @@ import { AppError, invalid, notFound } from '../common/errors';
 import { CLOSURE_INCLUDE } from '../common/includes';
 import { Dec, dec, usd as usdScale, zero } from '../common/money';
 import { closureOut } from '../common/serialize';
-import { businessDateOf, businessDateToUtc, isBusinessDate } from '../common/time';
+import { businessDateOf, businessDateToUtc, isBusinessDate, utcToBusinessDate } from '../common/time';
 import { Tx } from '../common/tx';
 import { AuditService } from '../audit/audit.service';
 import { AuthUser } from '../auth/auth.types';
 import { CompanyService } from '../company/company.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TombstonesService } from '../sync/tombstones.service';
 import { ClosuresQueryDto, CreateClosureDto } from './dto/closure.dto';
 
 export type ClosureAggregate = Prisma.DailyClosureGetPayload<{ include: typeof CLOSURE_INCLUDE }>;
@@ -44,6 +45,7 @@ export class ClosuresService {
     private readonly prisma: PrismaService,
     private readonly company: CompanyService,
     private readonly audit: AuditService,
+    private readonly tombstones: TombstonesService,
   ) {}
 
   /** Día contable de hoy según la zona del negocio. */
@@ -318,6 +320,37 @@ export class ClosuresService {
     });
     if (!row) throw notFound('El cierre');
     return closureOut(row);
+  }
+
+  /**
+   * `DELETE /closures/:id` — reabre el día: borra el cierre para que se pueda
+   * volver a contar y cerrar.
+   *
+   * Las ventas y los abonos del día no se tocan (el cierre sólo guarda lo que
+   * se contó contra ellos), así que reabrir no cambia ningún dinero asentado.
+   * El cierre borrado queda en la bitácora con sus cifras, y como tombstone
+   * para que los demás equipos lo quiten en su siguiente delta: el cierre es
+   * una colección acotada que el bootstrap funde en vez de reemplazar, así que
+   * sin tombstone seguiría apareciendo en ellos.
+   */
+  async reopen(user: AuthUser, id: string): Promise<void> {
+    const removed = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.dailyClosure.findUnique({ where: { id } });
+      if (!row) throw notFound('El cierre');
+      // `closure_methods` cae en cascada (onDelete: Cascade).
+      await tx.dailyClosure.delete({ where: { id } });
+      await this.tombstones.record('closure', id, user.id, tx);
+      return row;
+    });
+
+    await this.audit.log(user, 'cierre_reabierto', 'closure', id, {
+      date: utcToBusinessDate(removed.date),
+      closedBy: removed.userName,
+      salesCount: removed.salesCount,
+      expectedUsd: removed.expectedUsd.toString(),
+      receivedUsd: removed.receivedUsd.toString(),
+      differenceUsd: removed.differenceUsd.toString(),
+    });
   }
 
   /** `already_closed` como error del contrato, para el camino HTTP. */

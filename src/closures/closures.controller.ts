@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { AuthUser } from '../auth/auth.types';
 import { CurrentUser, RequirePermission } from '../auth/decorators';
 import { closureOut } from '../common/serialize';
@@ -39,5 +39,13 @@ export class ClosuresController {
     const { closure, alreadyClosed } = await this.closures.create(user, dto);
     if (alreadyClosed) throw ClosuresService.alreadyClosed(closure);
     return closureOut(closure);
+  }
+
+  /** Reabre el día: borra el cierre (las ventas no cambian) para volver a cerrarlo. */
+  @Delete(':id')
+  @RequirePermission('close_cash')
+  @HttpCode(204)
+  async reopen(@CurrentUser() user: AuthUser, @Param('id') id: string): Promise<void> {
+    await this.closures.reopen(user, id);
   }
 }

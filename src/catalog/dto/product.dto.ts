@@ -60,6 +60,8 @@ export class CreateProductDto {
 
   @IsOptional() @IsBoolean() bsOnly?: boolean;
   @IsOptional() @IsNumber() @Min(0) bsPrice?: number;
+  /** Sujeto al rango de precio de la empresa (ver `Product.priceBand`). */
+  @IsOptional() @IsBoolean() priceBand?: boolean;
 
   /**
    * @deprecated 2026-09 · Grupos de precio retirados. Se sigue aceptando —y
@@ -101,6 +103,7 @@ export class UpdateProductDto {
   @IsOptional() @IsBoolean() active?: boolean;
   @IsOptional() @IsBoolean() bsOnly?: boolean;
   @IsOptional() @IsNumber() @Min(0) bsPrice?: number;
+  @IsOptional() @IsBoolean() priceBand?: boolean;
   /**
    * `null` desvincula el producto de su grupo de precio.
    * @deprecated 2026-09 · Ver `CreateProductDto.priceGroupId`.

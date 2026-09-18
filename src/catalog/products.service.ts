@@ -152,6 +152,7 @@ export class ProductsService {
           active: dto.active ?? true,
           bsOnly: dto.bsOnly ?? false,
           bsPrice: dto.bsPrice === undefined ? null : usdScale(dto.bsPrice, 'bsPrice'),
+          priceBand: dto.priceBand ?? false,
           priceGroupId,
           isCombo: dto.isCombo ?? false,
           allowCustomization: dto.allowCustomization ?? false,
@@ -216,6 +217,7 @@ export class ProductsService {
       if (dto.bsOnly !== undefined) data.bsOnly = dto.bsOnly;
       if (dto.bsPrice !== undefined)
         data.bsPrice = dto.bsPrice === null ? null : usdScale(dto.bsPrice, 'bsPrice');
+      if (dto.priceBand !== undefined) data.priceBand = dto.priceBand;
       if (dto.priceGroupId !== undefined) {
         // `priceGroupId: null` es justo lo que manda la migración v6 del cliente
         // para desvincular; un id que ya no existe acaba igual (ver

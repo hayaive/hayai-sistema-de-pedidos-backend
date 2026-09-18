@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { CompanySettings, Product } from '../generated/prisma/client';
 import { Dec, dec } from '../common/money';
-import { COLD_CAKE_GENERIC_CODE, COLD_CAKE_GENERIC_PRODUCT_ID } from './catalog.constants';
 
 /** La `PriceRule` del frontend, con Decimal. */
 export interface PriceRule {
@@ -43,17 +42,14 @@ export class PricingService {
   /**
    * Regla aplicable a un producto (`lib/pricing.priceRuleOf`).
    *
-   * La banda mínimo/máximo de la empresa aplica **sólo al producto genérico
-   * "Tortas Frías"**, identificado por su id/código estable y no por su
-   * categoría. "Brownie" (P059) y "Torta Quesillo" (P015) están en la misma
-   * familia y quedan libres a propósito: su precio diferenciado vive por encima
-   * de esa banda, y antes escapaban porque su grupo no declaraba regla.
+   * La banda mínimo/máximo de la empresa aplica a los productos que el negocio
+   * marcó como sujetos al rango (`priceBand`). Hasta 2026-09 la banda colgaba
+   * sólo del genérico "Tortas Frías"; la migración `product_price_band` lo dejó
+   * marcado, así que su comportamiento no cambia.
    *
-   * Cualquier otro producto no tiene regla y nunca genera alerta.
+   * Un producto sin marcar no tiene regla y nunca genera alerta.
    */
   ruleOf(product: Product, company: CompanySettings): PriceRule | null {
-    const isGeneric =
-      product.id === COLD_CAKE_GENERIC_PRODUCT_ID || product.code === COLD_CAKE_GENERIC_CODE;
-    return isGeneric ? this.companyRule(company) : null;
+    return product.priceBand ? this.companyRule(company) : null;
   }
 }
