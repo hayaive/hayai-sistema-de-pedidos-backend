@@ -359,6 +359,11 @@ model Product {
   /// propone subirlo al máximo. Lo marca el negocio producto por producto.
   priceBand Boolean @default(false) @map("price_band")
 
+  /// Precios en Bs por tipo de precio de un producto `bsOnly`:
+  /// `[{ priceTypeId, amount }]` con montos en Bs. `null` en productos viejos:
+  /// ahí `bsPrice` vale para todos los tipos.
+  bsPrices Json? @map("bs_prices")
+
   /// Si está definido, el precio de venta lo dicta el grupo y NO `prices`.
   /// `prices` se conserva siempre como respaldo histórico.
   priceGroupId String? @map("price_group_id") @db.VarChar(64)

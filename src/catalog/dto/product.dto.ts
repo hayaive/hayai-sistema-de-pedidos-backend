@@ -63,6 +63,13 @@ export class CreateProductDto {
   /** Sujeto al rango de precio de la empresa (ver `Product.priceBand`). */
   @IsOptional() @IsBoolean() priceBand?: boolean;
 
+  /** Precios en Bs por tipo de precio (producto `bsOnly`). Ver `Product.bsPrices`. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PriceInputDto)
+  bsPrices?: PriceInputDto[];
+
   /**
    * @deprecated 2026-09 · Grupos de precio retirados. Se sigue aceptando —y
    * guardando en la columna, que aún existe— para no rechazar el alta que encoló
@@ -104,6 +111,12 @@ export class UpdateProductDto {
   @IsOptional() @IsBoolean() bsOnly?: boolean;
   @IsOptional() @IsNumber() @Min(0) bsPrice?: number;
   @IsOptional() @IsBoolean() priceBand?: boolean;
+  /** Se reemplaza en bloque cuando viene, igual que `prices`. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PriceInputDto)
+  bsPrices?: PriceInputDto[];
   /**
    * `null` desvincula el producto de su grupo de precio.
    * @deprecated 2026-09 · Ver `CreateProductDto.priceGroupId`.

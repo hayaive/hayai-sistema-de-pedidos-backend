@@ -159,6 +159,7 @@ export function productOut(p: Product & { prices: ProductPrice[]; comboItems: Co
     bsOnly: p.bsOnly,
     bsPrice: num(p.bsPrice) ?? undefined,
     priceBand: p.priceBand,
+    bsPrices: Array.isArray(p.bsPrices) ? p.bsPrices : undefined,
     prices: p.prices.map(priceOut),
     // @deprecated 2026-09 · La columna sigue en el esquema y se sigue enviando
     // para no cambiar la forma del agregado, pero el precio efectivo del producto
