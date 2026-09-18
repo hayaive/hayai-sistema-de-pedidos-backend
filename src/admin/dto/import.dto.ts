@@ -88,7 +88,7 @@ export class ImportProductDto {
   @IsOptional() @IsString() @MaxLength(2000) imageUrl?: string;
 
   /** Entra como movimiento de ajuste, no como valor de columna. */
-  @IsOptional() @IsNumber() stock?: number;
+  @IsOptional() @IsNumber() @Min(0) stock?: number;
   @IsOptional() @IsNumber() @Min(0) minStock?: number;
   @IsOptional() @IsBoolean() active?: boolean;
   @IsOptional() @IsBoolean() bsOnly?: boolean;

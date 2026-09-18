@@ -43,7 +43,7 @@ dónde sigue construyendo D.A.N.I.
 | Dinero | `NUMERIC` siempre. USD `Decimal(14,4)` · Bs `Decimal(18,4)` · tasa `Decimal(18,8)` · cantidades `Decimal(14,3)` | Nada de float en dinero. La tasa necesita 8 decimales: la semilla ya trae `947.29802151` |
 | Bs | **Nunca se persiste un monto en Bs derivado de un precio USD** | Regla explícita del frontend (`lib/money.ts`). Sólo se congela la tasa cuando el dinero ya entró: `sales.rate_*`, `sale_payments.rate_used`, `order_deposits.rate_used` |
 | Fechas | Todo `timestamptz`; el día contable se materializa en columnas `business_date` calculadas en `America/Caracas` por trigger | `createdAt.slice(0,10)` sobre un ISO en UTC manda las ventas de después de las 20:00 al día siguiente y descuadra el cierre de caja. Ver §3.4 |
-| Existencia | **Ledger** `inventory_movements` append-only; `products.stock` es caché que sólo mueve el servidor | Los deltas conmutan y el merge offline no pierde ventas. Además el cliente nunca escribe `stock`, lo que elimina de raíz toda una clase de conflictos |
+| Existencia | **Ledger** `inventory_movements` append-only; `products.stock` es caché que sólo mueve el servidor | `entrada`/`ajuste` conmutan; una `salida` se recorta al stock disponible al aplicar, así que **el stock nunca queda negativo** (se puede vender sin existencia, pero lo que se descuenta es `min(qty, stock)`). Además el cliente nunca escribe `stock`, lo que elimina de raíz toda una clase de conflictos |
 | Multitenancy | **No.** Un solo negocio, una sola base | El frontend no tiene ningún concepto de tenant. Ver §11 para cómo entraría sin romper nada |
 | Auditoría | `audit_log`, `inventory_movements` y `exchange_rates` son **append-only reforzado por trigger** (UPDATE y DELETE lanzan excepción) | Un rastro que se puede editar no prueba nada |
 
@@ -221,7 +221,7 @@ inventory_movements:  type ∈ {entrada, salida, ajuste}
 ```
 
 - `entrada` → `delta = +qty`
-- `salida` → `delta = −qty`
+- `salida` → `delta = −min(qty, stock_actual)` (recortada; ver más abajo)
 - `ajuste` → `delta = qty − stock_actual`, **resuelto en el momento de aplicar**,
   no en el de capturar. Un ajuste creado offline a las 9:00 que llega a las 18:00
   no borra las ventas que ocurrieron entre medias.
@@ -237,8 +237,14 @@ SELECT p.id, p.stock, COALESCE(SUM(m.delta), 0) AS ledger,
 HAVING p.stock <> COALESCE(SUM(m.delta), 0);
 ```
 
-`stock` **puede ser negativo** a propósito: un POS tiene que poder vender lo que
-el conteo dice que no hay y cuadrarlo después con un ajuste.
+`stock` **nunca queda negativo** (CHECK `products_stock_nonneg_ck`): un POS puede
+vender lo que el conteo dice que no hay (la venta no se rechaza), pero la
+`salida` se recorta al stock disponible — `delta = -min(qty, stock)` — y el
+faltante ("vendido sin existencia") queda derivable como `qty + delta`. El CHECK
+`inventory_movements_delta_ck` sólo admite ese recorte cuando deja la existencia
+exactamente en 0. `apply()` toma el lock de fila del producto (`FOR NO KEY
+UPDATE`) antes de leer el stock, así que dos movimientos concurrentes sobre el
+mismo producto se serializan en vez de perder una escritura.
 
 ### 3.7 · Reglas de precio que el esquema preserva
 
@@ -406,7 +412,7 @@ Principios:
 | `orders.status` | **Sí** | — | **Máquina de estados monótona**: `pendiente(0) → preparacion(1) → listo(2) → procesado(3)`; `cancelado` es rama terminal. Una transición offline que retrocede (llega `preparacion` cuando el servidor ya está en `listo`) se **ignora** y se audita, no se aplica. Así dos dispositivos que empujan el pedido hacia adelante nunca pelean |
 | `order_items` | con su pedido | `rev` del pedido | Se reemplazan en bloque. El servidor **recalcula** `total_usd` (jamás lo acepta del cliente) |
 | `order_deposits` | **Sí** | PK propia + `rev` propio | **Siempre se fusionan** (append-only, idempotente por PK): dos cajas que abonaron sin verse conservan los dos abonos. Si la suma pasa del total, **no se rechaza**: el excedente aparece como `overpaidUsd` — caso que el frontend ya modela. En línea sí se valida contra el saldo (como hoy). Anular es idempotente y gana sobre no anular |
-| `inventory_movements` | **Sí** | append-only | Idempotente por PK. `entrada`/`salida` conmutan. `ajuste` se resuelve **en el momento de aplicar** (`delta = qty − stock_actual`). Jamás se editan ni se borran (trigger) |
+| `inventory_movements` | **Sí** | append-only | Idempotente por PK. `entrada`/`ajuste` conmutan; una `salida` se recorta al stock disponible al aplicar (nunca deja el stock negativo), así que el orden de aplicación decide cuánto se descuenta, no si cuadra. `ajuste` se resuelve **en el momento de aplicar** (`delta = qty − stock_actual`). Jamás se editan ni se borran (trigger) |
 | `products` (catálogo) | Sí, con reservas | `rev` | Parche con LWW **por campo**. `stock` **no es escribible**: sólo cambia por movimiento. Al crear, `code` repetido **o retirado** ⇒ recodificación + `renumbered` (vía sync, `allowRecode`); por HTTP directo (sin `allowRecode`) ambos casos siguen siendo rechazo (409 `conflict`/`retired_code`). Al editar, código retirado ⇒ rechazo siempre |
 | `product_prices`, `price_group_prices` | Sí | `rev` del padre | LWW **por celda** `(padre, tipo de precio)`: dos dispositivos que cambian Mayor y Detal sobreviven los dos |
 | `price_groups` | Sí | `rev` | LWW por campo en nombre/regla; los precios, por celda |

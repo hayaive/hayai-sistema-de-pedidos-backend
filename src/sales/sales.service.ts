@@ -260,6 +260,19 @@ export class SalesService {
       // ── 7 · Inventario ─────────────────────────────────────────────────────
       // Los combos NO mueven stock: su contenido es descriptivo (`createSale` del
       // frontend hace lo mismo con `if (p && !p.isCombo)`).
+      const stockProductIds = [
+        ...new Set(
+          lines.filter((l) => !products.get(l.productId)?.isCombo).map((l) => l.productId),
+        ),
+      ].sort();
+      if (stockProductIds.length) {
+        // Bloqueo en orden de id: si dos ventas concurrentes comparten
+        // productos, las dos piden los locks en el mismo orden y una espera a
+        // la otra en vez de interbloquearse.
+        await tx.$queryRaw`
+          SELECT "id" FROM "products" WHERE "id" = ANY(${stockProductIds}) ORDER BY "id" FOR NO KEY UPDATE
+        `;
+      }
       for (const line of lines) {
         const product = products.get(line.productId);
         if (!product || product.isCombo) continue;
@@ -347,18 +360,37 @@ export class SalesService {
       });
 
       if (returned === 0) {
-        const products = await tx.product.findMany({
-          where: { id: { in: sale.items.map((i) => i.productId) } },
-          select: { id: true, isCombo: true },
-        });
-        const isCombo = new Map(products.map((p) => [p.id, p.isCombo]));
+        // Se devuelve lo que de verdad se descontó, no `sale_items.qty`: si la
+        // venta se hizo sin existencia (stock nunca negativo) `sale_items.qty`
+        // ya no coincide con lo que el ledger restó. `-SUM(delta)` de las
+        // salidas de esta venta es lo real; `HAVING SUM(delta) < 0` descarta los
+        // productos que se vendieron enteramente sin existencia (nada que
+        // devolver, ya están en 0).
+        const toReturn = await tx.$queryRaw<{ product_id: string; qty: string }[]>`
+          SELECT "product_id", (-SUM("delta"))::text AS "qty"
+            FROM "inventory_movements"
+           WHERE "sale_id" = ${id} AND "type" = 'salida'
+           GROUP BY "product_id"
+          HAVING SUM("delta") < 0
+           ORDER BY "product_id"
+        `;
 
-        for (const item of sale.items) {
-          if (isCombo.get(item.productId)) continue;
+        if (toReturn.length) {
+          // Bloqueo en el mismo orden (ascendente por id) que en `create`, para
+          // no interbloquearse con una venta concurrente sobre los mismos
+          // productos.
+          await tx.$queryRaw`
+            SELECT "id" FROM "products"
+             WHERE "id" = ANY(${toReturn.map((r) => r.product_id)})
+             ORDER BY "id" FOR NO KEY UPDATE
+          `;
+        }
+
+        for (const row of toReturn) {
           await this.inventory.apply(tx, {
-            productId: item.productId,
+            productId: row.product_id,
             type: 'entrada',
-            qty: dec(item.qty),
+            qty: dec(row.qty),
             reason: REASON_VOID,
             note: sale.number,
             userId: user.id,

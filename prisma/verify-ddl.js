@@ -43,12 +43,25 @@ const MIGRATIONS_DIR = path.join(__dirname, "migrations");
 // ordena lexicográficamente. Se aplican todas para que las migraciones
 // posteriores a la inicial (ALTER sobre tablas que la inicial crea) también
 // queden verificadas contra un Postgres real.
-const MIGRATIONS = fs
+//
+// `stock_never_negative` se separa del resto: hace falta sembrar productos con
+// stock YA negativo ("datos de producción" de antes de la regla) antes de
+// aplicarla, para comprobar el backfill. Se aplica más abajo, junto al resto
+// de casos nuevos de la regla (§2.5).
+const STOCK_MIGRATION_NAME = "20260918130000_stock_never_negative";
+const ALL_MIGRATION_NAMES = fs
   .readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
   .filter((d) => d.isDirectory())
   .map((d) => d.name)
-  .sort()
-  .map((name) => path.join(MIGRATIONS_DIR, name, "migration.sql"));
+  .sort();
+const MIGRATIONS = ALL_MIGRATION_NAMES.filter((name) => name !== STOCK_MIGRATION_NAME).map((name) =>
+  path.join(MIGRATIONS_DIR, name, "migration.sql"),
+);
+const STOCK_MIGRATION = path.join(MIGRATIONS_DIR, STOCK_MIGRATION_NAME, "migration.sql");
+if (!ALL_MIGRATION_NAMES.includes(STOCK_MIGRATION_NAME)) {
+  console.error(`Falta la migración ${STOCK_MIGRATION_NAME}`);
+  process.exit(1);
+}
 
 let pass = 0;
 const fails = [];
@@ -66,6 +79,18 @@ async function expectError(c, sql, name, fragment) {
     const msg = String(e.message);
     if (fragment && !msg.toLowerCase().includes(fragment.toLowerCase())) bad(name, `error distinto: ${msg}`);
     else ok(`${name} (rechazado: ${msg.split("\n")[0].slice(0, 70)})`);
+  }
+}
+
+async function expectOk(c, sql, name) {
+  try {
+    await c.query("BEGIN");
+    await c.query(sql);
+    await c.query("ROLLBACK");
+    ok(name);
+  } catch (e) {
+    await c.query("ROLLBACK").catch(() => {});
+    bad(name, e.message);
   }
 }
 
@@ -134,6 +159,81 @@ async function main() {
     UPDATE company_settings SET cold_cake_category_id='cat-tortas-frias' WHERE id='singleton';
   `);
   ok("fixture mínimo insertado");
+
+  // ── 2.5 · Stock nunca negativo ──────────────────────────────────────────────
+  // Se siembran productos con stock YA negativo -- "datos de producción" de
+  // antes de la regla -- y RECIÉN ENTONCES se aplica la migración, para
+  // comprobar que el backfill los deja en 0 sin descuadrar el ledger.
+  await c.query(`
+    INSERT INTO products (id,code,name,category_id,stock,updated_at) VALUES
+      ('prod-neg1','P900','Negativo simple','cat-tortas-frias',-3,now()),
+      ('prod-neg2','P901','Negativo decimal','cat-tortas-frias',-1.5,now());
+    INSERT INTO inventory_movements (id,product_id,type,qty,delta,stock_after,reason,user_id) VALUES
+      ('mov-neg1a','prod-neg1','ajuste',2,2,2,'Stock inicial','user-admin'),
+      ('mov-neg1b','prod-neg1','salida',5,-5,-3,'Salida por venta','user-admin'),
+      ('mov-neg2a','prod-neg2','salida',1.5,-1.5,-1.5,'Salida por venta','user-admin');
+  `);
+  const reconcileBefore = (await c.query(`
+    SELECT p.id FROM products p LEFT JOIN inventory_movements m ON m.product_id=p.id
+     WHERE p.id IN ('prod-neg1','prod-neg2') GROUP BY p.id, p.stock
+    HAVING p.stock <> COALESCE(SUM(m.delta),0)`)).rows;
+  if (reconcileBefore.length === 0) ok("fixture con negativos cuadra con el ledger antes de migrar");
+  else bad("fixture con negativos", JSON.stringify(reconcileBefore));
+
+  const revBefore = (await c.query(
+    "SELECT id, rev FROM products WHERE id IN ('prod-neg1','prod-neg2') ORDER BY id",
+  )).rows;
+
+  await c.query(fs.readFileSync(STOCK_MIGRATION, "utf8"));
+  ok(`${STOCK_MIGRATION_NAME}/migration.sql aplica sobre datos con negativos`);
+
+  const stillNeg = (await c.query("SELECT count(*)::int n FROM products WHERE stock < 0")).rows[0].n;
+  if (stillNeg === 0) ok("sin productos con stock negativo tras el backfill");
+  else bad("productos negativos tras el backfill", stillNeg);
+
+  const fixes = (await c.query(`
+    SELECT product_id, qty::text, delta::text, stock_after::text, user_id, reason
+      FROM inventory_movements WHERE id LIKE 'stock0-%' ORDER BY product_id`)).rows;
+  if (
+    fixes.length === 2 &&
+    fixes[0].delta === "3.000" &&
+    fixes[1].delta === "1.500" &&
+    fixes.every((f) => f.user_id === "system" && f.stock_after === "0.000")
+  ) {
+    ok("backfill: un ajuste por producto negativo, a 0, firmado por system");
+  } else bad("backfill", JSON.stringify(fixes));
+
+  const reconcileAfter = (await c.query(`
+    SELECT p.id FROM products p LEFT JOIN inventory_movements m ON m.product_id=p.id
+     WHERE p.id IN ('prod-neg1','prod-neg2') GROUP BY p.id, p.stock
+    HAVING p.stock <> COALESCE(SUM(m.delta),0)`)).rows;
+  if (reconcileAfter.length === 0) ok("reconcile vacío tras el backfill");
+  else bad("reconcile tras el backfill", JSON.stringify(reconcileAfter));
+
+  const revAfter = (await c.query(
+    "SELECT id, rev FROM products WHERE id IN ('prod-neg1','prod-neg2') ORDER BY id",
+  )).rows;
+  if (revAfter.every((r, i) => r.rev > revBefore[i].rev)) {
+    ok("el backfill bumpea rev de los productos corregidos (llegan al poll)");
+  } else bad("rev tras el backfill", JSON.stringify({ revBefore, revAfter }));
+
+  const newChecks = (await c.query(`
+    SELECT conname, convalidated FROM pg_constraint
+     WHERE conname IN ('inventory_movements_delta_ck','products_stock_nonneg_ck') ORDER BY conname`)).rows;
+  if (newChecks.length === 2 && newChecks.every((r) => r.convalidated)) {
+    ok("los CHECK de stock nunca negativo existen y están validados");
+  } else bad("CHECK de stock nunca negativo", JSON.stringify(newChecks));
+
+  await expectOk(c,
+    `INSERT INTO inventory_movements (id,product_id,type,qty,delta,stock_after,reason,user_id)
+     VALUES ('mov-clamp-ok','prod-P060','salida',999,-20,0,'Salida recortada','user-admin')`,
+    "salida recortada válida: descuenta todo el stock disponible y deja stock_after en 0");
+  await expectError(c,
+    `INSERT INTO inventory_movements (id,product_id,type,qty,delta,stock_after,reason,user_id)
+     VALUES ('mov-clamp-bad','prod-P060','salida',999,-2,18,'Recorte que deja existencia','user-admin')`,
+    "una salida recortada que deja existencia se rechaza", "inventory_movements_delta_ck");
+  await expectError(c, "UPDATE products SET stock = -0.001 WHERE id='prod-P060'",
+    "products.stock negativo se rechaza", "products_stock_nonneg_ck");
 
   // ── 3 · Cursor de sincronización ───────────────────────────────────────────
   const r = (await c.query(`
