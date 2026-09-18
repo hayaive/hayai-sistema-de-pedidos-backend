@@ -70,6 +70,9 @@ export class CompanyService {
     assign('ticketFooter');
     assign('salePrefix');
     assign('orderPrefix');
+    assign('productCodePrefix');
+    assign('productCodeDigits');
+    assign('productCodeStart');
     assign('timezone');
     assign('rateMaxAgeHours');
     assign('shortcuts');

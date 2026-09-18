@@ -95,9 +95,9 @@ export class CatalogHandlers {
   }
 
   /**
-   * `product.create`. Un `code` repetido se **recodifica** (dos dispositivos
-   * offline pueden generar el mismo) y se devuelve `renumbered`; un código
-   * retirado es rechazo permanente.
+   * `product.create`. Un `code` repetido **o retirado** se **recodifica** (dos
+   * dispositivos offline pueden generar el mismo, o reusar sin saberlo uno que
+   * ya se retiró) y se devuelve `renumbered` (ARCHITECTURE.md §5).
    */
   private async productCreate(ctx: MutationContext): Promise<HandlerOutcome> {
     const dto = parsePayload(CreateProductDto, ctx.payload);

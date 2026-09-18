@@ -919,6 +919,14 @@ model CompanySettings {
   orderPrefix String @default("P-") @map("order_prefix") @db.VarChar(8)
   orderNext   Int    @default(1) @map("order_next")
 
+  /// Secuencia automática de códigos de producto (Ajustes). `productCodeStart`
+  /// es un **PISO configurable, no un contador**: el sugerido es el menor
+  /// número libre ≥ piso en la serie `prefijo+dígitos`, y el servidor nunca lo
+  /// avanza al crear un producto (`ProductsService.nextFreeCode`).
+  productCodePrefix String @default("P") @map("product_code_prefix") @db.VarChar(8)
+  productCodeDigits Int    @default(3) @map("product_code_digits")
+  productCodeStart  Int    @default(1) @map("product_code_start")
+
   /// Regla de precio por defecto de tortas frías: umbral de alerta y precio
   /// objetivo sugerido (lib/pricing.companyPriceRule).
   coldCakeMin        Decimal @default(1.10) @map("cold_cake_min") @db.Decimal(14, 4)

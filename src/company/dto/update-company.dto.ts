@@ -4,6 +4,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -24,6 +25,21 @@ export class UpdateCompanyDto {
 
   @IsOptional() @IsString() @MaxLength(8) salePrefix?: string;
   @IsOptional() @IsString() @MaxLength(8) orderPrefix?: string;
+
+  /**
+   * Secuencia automática de códigos de producto (Ajustes). `productCodeStart`
+   * es un piso, no un contador: el servidor nunca lo avanza al crear un
+   * producto (`ProductsService.nextFreeCode`). Las cotas replican los CHECK
+   * de `company_settings` en la base (mismo mensaje que un rechazo del
+   * servidor: mejor que el cliente los aplique también).
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]([A-Z0-9-]{0,6}[A-Z-])?$/)
+  productCodePrefix?: string;
+
+  @IsOptional() @IsInt() @Min(1) @Max(6) productCodeDigits?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(99999999) productCodeStart?: number;
 
   /**
    * Banda de precio del producto genérico "Tortas Frías": umbral y objetivo.
