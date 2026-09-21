@@ -20,6 +20,7 @@ import {
   UpdateProductDto,
 } from './dto/product.dto';
 import { nextProductCode } from './product-code';
+import { searchProducts } from './product-search';
 
 export type ProductAggregate = Prisma.ProductGetPayload<{ include: typeof PRODUCT_INCLUDE }>;
 
@@ -43,15 +44,35 @@ export class ProductsService {
     const where: Prisma.ProductWhereInput = {
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       ...(query.active !== undefined ? { active: query.active === 'true' } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { code: { contains: query.search, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
     };
+
+    // Con búsqueda, el filtro por nombre/código se hace en memoria: tiene que
+    // ignorar acentos y espacios y ordenar por cercanía (ver `product-search`).
+    // Primero se resuelven los ids y después se pagina sobre ellos.
+    if (query.search?.trim()) {
+      const candidates = await this.prisma.product.findMany({
+        where,
+        select: { id: true, code: true, name: true },
+        orderBy: [{ code: 'asc' }],
+      });
+      const ids = searchProducts(candidates, query.search).map((p) => p.id);
+      const pageIds = ids.slice((query.page - 1) * query.pageSize, query.page * query.pageSize);
+      const found = await this.prisma.product.findMany({
+        where: { id: { in: pageIds } },
+        include: PRODUCT_INCLUDE,
+      });
+      const byId = new Map(found.map((p) => [p.id, p]));
+
+      return {
+        page: query.page,
+        pageSize: query.pageSize,
+        total: ids.length,
+        items: pageIds.flatMap((id) => {
+          const row = byId.get(id);
+          return row ? [productOut(row)] : [];
+        }),
+      };
+    }
 
     const [total, rows] = await Promise.all([
       this.prisma.product.count({ where }),
