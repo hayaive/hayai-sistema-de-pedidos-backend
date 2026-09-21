@@ -1,0 +1,683 @@
+{
+ "categories": [
+  {
+   "id": "cat-tortas-frias",
+   "name": "Tortas Frías"
+  },
+  {
+   "id": "cat-postres",
+   "name": "Postres"
+  },
+  {
+   "id": "cat-panaderia",
+   "name": "Panadería"
+  },
+  {
+   "id": "cat-pasapalos",
+   "name": "Pasapalos"
+  },
+  {
+   "id": "cat-tortas",
+   "name": "Tortas de cumpleaños"
+  },
+  {
+   "id": "cat-combos",
+   "name": "Combos"
+  },
+  {
+   "id": "cat-fiesta",
+   "name": "Fiesta"
+  }
+ ],
+ "products": [
+  {
+   "id": "prod-3l",
+   "code": "3L",
+   "name": "tres-leches",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 3
+  },
+  {
+   "id": "prod-mil",
+   "code": "Mil",
+   "name": "milhojas",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 4
+  },
+  {
+   "id": "prod-fre",
+   "code": "fre",
+   "name": "fresa",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 5
+  },
+  {
+   "id": "prod-areq",
+   "code": "areq",
+   "name": "arequipe",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 6
+  },
+  {
+   "id": "prod-t-s",
+   "code": "t.S",
+   "name": "torta suiza",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 7
+  },
+  {
+   "id": "prod-choco",
+   "code": "choco",
+   "name": "chocolate",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 8
+  },
+  {
+   "id": "prod-cho-le",
+   "code": "cho le",
+   "name": "choco-leche",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 9
+  },
+  {
+   "id": "prod-choco-fre",
+   "code": "choco fre",
+   "name": "choco-fresa",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 10
+  },
+  {
+   "id": "prod-mani",
+   "code": "mani",
+   "name": "mani",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 11
+  },
+  {
+   "id": "prod-choco-mni",
+   "code": "choco mni",
+   "name": "choco-mani",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 12
+  },
+  {
+   "id": "prod-choarq",
+   "code": "choarq",
+   "name": "choco-arequipe",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 13
+  },
+  {
+   "id": "prod-pre",
+   "code": "pre",
+   "name": "prestigio",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 14
+  },
+  {
+   "id": "prod-torn",
+   "code": "torn",
+   "name": "tornado",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 15
+  },
+  {
+   "id": "prod-brow",
+   "code": "brow",
+   "name": "brownie",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 1100.0,
+   "detal": 1150.0,
+   "isCombo": false,
+   "row": 16
+  },
+  {
+   "id": "prod-tq",
+   "code": "TQ",
+   "name": "torta-quesillo",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 1100.0,
+   "detal": 1150.0,
+   "isCombo": false,
+   "row": 17
+  },
+  {
+   "id": "prod-bq",
+   "code": "BQ",
+   "name": "brownie-quesillo",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 1270.0,
+   "detal": 1270.0,
+   "isCombo": false,
+   "row": 18
+  },
+  {
+   "id": "prod-ba",
+   "code": "BA",
+   "name": "Beso de Angel",
+   "categoryId": "cat-tortas-frias",
+   "currency": "BS",
+   "mayor": 1270.0,
+   "detal": 1270.0,
+   "isCombo": false,
+   "row": 19
+  },
+  {
+   "id": "prod-yg",
+   "code": "yg",
+   "name": "yogurt",
+   "categoryId": "cat-postres",
+   "currency": "USD",
+   "mayor": 2.5,
+   "detal": 2.3,
+   "isCombo": false,
+   "row": 20
+  },
+  {
+   "id": "prod-qp",
+   "code": "QP",
+   "name": "Quesillo pote",
+   "categoryId": "cat-postres",
+   "currency": "USD",
+   "mayor": 2.5,
+   "detal": 2.3,
+   "isCombo": false,
+   "row": 21
+  },
+  {
+   "id": "prod-qrc",
+   "code": "Qrc",
+   "name": "Quesillo Racion",
+   "categoryId": "cat-postres",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 22
+  },
+  {
+   "id": "prod-gelatina",
+   "code": "gelatina",
+   "name": "gelatina",
+   "categoryId": "cat-postres",
+   "currency": "USD",
+   "mayor": 2.0,
+   "detal": 2.0,
+   "isCombo": false,
+   "row": 23
+  },
+  {
+   "id": "prod-qredondo",
+   "code": "Qredondo",
+   "name": "Quesillo Redondo",
+   "categoryId": "cat-postres",
+   "currency": "USD",
+   "mayor": 3.5,
+   "detal": 4.0,
+   "isCombo": false,
+   "row": 24
+  },
+  {
+   "id": "prod-marmo",
+   "code": "Marmo",
+   "name": "Biscocho Marmoleado",
+   "categoryId": "cat-postres",
+   "currency": "BS",
+   "mayor": 1100.0,
+   "detal": 1150.0,
+   "isCombo": false,
+   "row": 25
+  },
+  {
+   "id": "prod-pina",
+   "code": "Piña",
+   "name": "Biscocho piña",
+   "categoryId": "cat-postres",
+   "currency": "BS",
+   "mayor": 1100.0,
+   "detal": 1150.0,
+   "isCombo": false,
+   "row": 26
+  },
+  {
+   "id": "prod-cortad",
+   "code": "Cortad",
+   "name": "Cortaditos",
+   "categoryId": "cat-postres",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 27
+  },
+  {
+   "id": "prod-cata",
+   "code": "cata",
+   "name": "catalina",
+   "categoryId": "cat-postres",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 28
+  },
+  {
+   "id": "prod-pastelito",
+   "code": "pastelito",
+   "name": "patelitos",
+   "categoryId": "cat-postres",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 29
+  },
+  {
+   "id": "prod-pseca",
+   "code": "Pseca",
+   "name": "galleta pasta seca",
+   "categoryId": "cat-postres",
+   "currency": "BS",
+   "mayor": 500.0,
+   "detal": 500.0,
+   "isCombo": false,
+   "row": 30
+  },
+  {
+   "id": "prod-palme",
+   "code": "palme",
+   "name": "palmeritas",
+   "categoryId": "cat-postres",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 31
+  },
+  {
+   "id": "prod-polvo",
+   "code": "polvo",
+   "name": "polvorosas",
+   "categoryId": "cat-postres",
+   "currency": "BS",
+   "mayor": 960.0,
+   "detal": 1000.0,
+   "isCombo": false,
+   "row": 32
+  },
+  {
+   "id": "prod-susp",
+   "code": "susp",
+   "name": "suspiros",
+   "categoryId": "cat-postres",
+   "currency": "BS",
+   "mayor": 500.0,
+   "detal": 500.0,
+   "isCombo": false,
+   "row": 33
+  },
+  {
+   "id": "prod-pan-fru",
+   "code": "pan fru",
+   "name": "pan grande fruta",
+   "categoryId": "cat-panaderia",
+   "currency": "BS",
+   "mayor": 1100.0,
+   "detal": 1150.0,
+   "isCombo": false,
+   "row": 34
+  },
+  {
+   "id": "prod-pan-azu",
+   "code": "pan azu",
+   "name": "pan grande azucarado",
+   "categoryId": "cat-panaderia",
+   "currency": "BS",
+   "mayor": 1100.0,
+   "detal": 1150.0,
+   "isCombo": false,
+   "row": 35
+  },
+  {
+   "id": "prod-pan-arqp",
+   "code": "pan arqp",
+   "name": "pan de arequipe grande",
+   "categoryId": "cat-panaderia",
+   "currency": "BS",
+   "mayor": 1100.0,
+   "detal": 1150.0,
+   "isCombo": false,
+   "row": 36
+  },
+  {
+   "id": "prod-pan-gyab",
+   "code": "pan gyab",
+   "name": "pan de guayaba grade",
+   "categoryId": "cat-panaderia",
+   "currency": "BS",
+   "mayor": 1100.0,
+   "detal": 1150.0,
+   "isCombo": false,
+   "row": 37
+  },
+  {
+   "id": "prod-pan-tun",
+   "code": "pan tun",
+   "name": "pan de tunja",
+   "categoryId": "cat-panaderia",
+   "currency": "BS",
+   "mayor": 1150.0,
+   "detal": 1100.0,
+   "isCombo": false,
+   "row": 38
+  },
+  {
+   "id": "prod-golf",
+   "code": "golf",
+   "name": "golfeado",
+   "categoryId": "cat-panaderia",
+   "currency": "BS",
+   "mayor": 1150.0,
+   "detal": 1100.0,
+   "isCombo": false,
+   "row": 39
+  },
+  {
+   "id": "prod-p-nina",
+   "code": "p niña",
+   "name": "pecho de niña",
+   "categoryId": "cat-panaderia",
+   "currency": "BS",
+   "mayor": 1150.0,
+   "detal": 1100.0,
+   "isCombo": false,
+   "row": 40
+  },
+  {
+   "id": "prod-30und",
+   "code": "30und",
+   "name": "bandeja de tequeños 30 und",
+   "categoryId": "cat-pasapalos",
+   "currency": "USD",
+   "mayor": 1.5,
+   "detal": 2.0,
+   "isCombo": false,
+   "row": 41
+  },
+  {
+   "id": "prod-100-und",
+   "code": "100 und",
+   "name": "bandeja de pasapalos 100 und",
+   "categoryId": "cat-pasapalos",
+   "currency": "USD",
+   "mayor": 6.0,
+   "detal": 7.0,
+   "isCombo": false,
+   "row": 42
+  },
+  {
+   "id": "prod-3kg",
+   "code": "3kg",
+   "name": "Grande 3kg",
+   "categoryId": "cat-tortas",
+   "currency": "USD",
+   "mayor": 13.0,
+   "detal": 13.0,
+   "isCombo": false,
+   "row": 43
+  },
+  {
+   "id": "prod-2kg",
+   "code": "2kg",
+   "name": "Mediano. 2kg",
+   "categoryId": "cat-tortas",
+   "currency": "USD",
+   "mayor": 11.0,
+   "detal": 11.0,
+   "isCombo": false,
+   "row": 44
+  },
+  {
+   "id": "prod-1-5-kg",
+   "code": "1,5 kg",
+   "name": "kilo y medio",
+   "categoryId": "cat-tortas",
+   "currency": "USD",
+   "mayor": 8.0,
+   "detal": 8.0,
+   "isCombo": false,
+   "row": 45
+  },
+  {
+   "id": "prod-1kg",
+   "code": "1kg",
+   "name": "Pequeño 1 kg",
+   "categoryId": "cat-tortas",
+   "currency": "USD",
+   "mayor": 7.0,
+   "detal": 7.0,
+   "isCombo": false,
+   "row": 46
+  },
+  {
+   "id": "prod-700gr",
+   "code": "700gr",
+   "name": "Mini. 700 gr",
+   "categoryId": "cat-tortas",
+   "currency": "USD",
+   "mayor": 5.0,
+   "detal": 5.0,
+   "isCombo": false,
+   "row": 47
+  },
+  {
+   "id": "prod-c1",
+   "code": "c1",
+   "name": "combo #1",
+   "categoryId": "cat-combos",
+   "currency": "USD",
+   "mayor": 2.0,
+   "detal": 2.0,
+   "isCombo": true,
+   "row": 48
+  },
+  {
+   "id": "prod-c2",
+   "code": "c2",
+   "name": "combo #2",
+   "categoryId": "cat-combos",
+   "currency": "USD",
+   "mayor": 4.0,
+   "detal": 4.0,
+   "isCombo": true,
+   "row": 49
+  },
+  {
+   "id": "prod-c3",
+   "code": "c3",
+   "name": "combo #3",
+   "categoryId": "cat-combos",
+   "currency": "USD",
+   "mayor": 6.0,
+   "detal": 6.0,
+   "isCombo": true,
+   "row": 50
+  },
+  {
+   "id": "prod-bolsa",
+   "code": "bolsa",
+   "name": "bolsa de regalo",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 2.0,
+   "detal": 2.0,
+   "isCombo": false,
+   "row": 51
+  },
+  {
+   "id": "prod-banda",
+   "code": "banda",
+   "name": "bandanas",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 2.5,
+   "detal": 2.5,
+   "isCombo": false,
+   "row": 52
+  },
+  {
+   "id": "prod-v-num",
+   "code": "v num",
+   "name": "vela de numero",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 1.0,
+   "detal": 1.0,
+   "isCombo": false,
+   "row": 53
+  },
+  {
+   "id": "prod-v-volc",
+   "code": "v volc",
+   "name": "vela volcanica",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 1.0,
+   "detal": 1.0,
+   "isCombo": false,
+   "row": 54
+  },
+  {
+   "id": "prod-v-esc",
+   "code": "v esc",
+   "name": "vela escarchada",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 1.2,
+   "detal": 1.2,
+   "isCombo": false,
+   "row": 55
+  },
+  {
+   "id": "prod-v-unit",
+   "code": "v unit",
+   "name": "vela unitaria",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 0.5,
+   "detal": 0.5,
+   "isCombo": false,
+   "row": 56
+  },
+  {
+   "id": "prod-topper",
+   "code": "topper",
+   "name": "toppers",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 2.0,
+   "detal": 2.0,
+   "isCombo": false,
+   "row": 57
+  },
+  {
+   "id": "prod-globo-fc",
+   "code": "globo fc",
+   "name": "globo feliz cumpleaños",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 1.5,
+   "detal": 1.5,
+   "isCombo": false,
+   "row": 58
+  },
+  {
+   "id": "prod-globo-num",
+   "code": "globo num",
+   "name": "globo de nuemero",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 1.2,
+   "detal": 1.2,
+   "isCombo": false,
+   "row": 59
+  },
+  {
+   "id": "prod-cortina",
+   "code": "cortina",
+   "name": "cortina",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 1.5,
+   "detal": 1.5,
+   "isCombo": false,
+   "row": 60
+  },
+  {
+   "id": "prod-mantel",
+   "code": "mantel",
+   "name": "mantel para fiesta",
+   "categoryId": "cat-fiesta",
+   "currency": "USD",
+   "mayor": 1.5,
+   "detal": 1.5,
+   "isCombo": false,
+   "row": 61
+  }
+ ]
+}
