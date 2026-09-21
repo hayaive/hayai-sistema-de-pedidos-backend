@@ -154,6 +154,11 @@ async function load() {
   if (!withBsPrices)
     log('AVISO: el schema no tiene products.bs_prices; los productos en Bs quedan con un solo precio (Mayor) hasta desplegar la migración y volver a correr la carga');
 
+  // Precio sujeto al rango de Ajustes (mínimo/máximo): todas las tortas frías.
+  const withPriceBand = await hasColumn('products', 'price_band');
+  if (!withPriceBand)
+    log('AVISO: el schema no tiene products.price_band; el rango de precio no se marca hasta desplegar la migración y volver a correr la carga');
+
   for (const c of catalog.categories) {
     const clash = await db.query(`SELECT id FROM categories WHERE lower(name) = lower($1) AND id <> $2`, [
       c.name,
@@ -175,6 +180,10 @@ async function load() {
     const cols = ['id', 'code', 'name', 'category_id', 'bs_only', 'bs_price', 'is_combo'];
     // `bs_price` es el del tipo predeterminado (Mayor); lo exige el CHECK de `bs_only`.
     const vals = [p.id, p.code, p.name, p.categoryId, bs, bs ? p.mayor : null, !!p.isCombo];
+    if (withPriceBand) {
+      cols.push('price_band');
+      vals.push(!!p.priceBand);
+    }
     if (withBsPrices) {
       cols.push('bs_prices');
       vals.push(
@@ -225,6 +234,8 @@ async function main() {
     log(`  ${t.padEnd(22)} ${await count(t)}`);
   const byCur = await db.query(`SELECT bs_only, count(*)::int n FROM products GROUP BY 1 ORDER BY 1`);
   for (const r of byCur.rows) log(`  productos ${r.bs_only ? 'en Bs ' : 'en USD'}       ${r.n}`);
+  if (await hasColumn('products', 'price_band'))
+    log(`  sujetos al rango       ${(await db.query(`SELECT count(*)::int n FROM products WHERE price_band`)).rows[0].n}`);
 
   await db.query(COMMIT ? 'COMMIT' : 'ROLLBACK');
   log(COMMIT ? 'HECHO (commit)' : 'simulación terminada: no se cambió nada');

@@ -39,7 +39,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 3
+   "row": 3,
+   "priceBand": true
   },
   {
    "id": "prod-mil",
@@ -50,7 +51,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 4
+   "row": 4,
+   "priceBand": true
   },
   {
    "id": "prod-fre",
@@ -61,7 +63,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 5
+   "row": 5,
+   "priceBand": true
   },
   {
    "id": "prod-areq",
@@ -72,7 +75,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 6
+   "row": 6,
+   "priceBand": true
   },
   {
    "id": "prod-t-s",
@@ -83,7 +87,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 7
+   "row": 7,
+   "priceBand": true
   },
   {
    "id": "prod-choco",
@@ -94,7 +99,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 8
+   "row": 8,
+   "priceBand": true
   },
   {
    "id": "prod-cho-le",
@@ -105,7 +111,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 9
+   "row": 9,
+   "priceBand": true
   },
   {
    "id": "prod-choco-fre",
@@ -116,7 +123,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 10
+   "row": 10,
+   "priceBand": true
   },
   {
    "id": "prod-mani",
@@ -127,7 +135,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 11
+   "row": 11,
+   "priceBand": true
   },
   {
    "id": "prod-choco-mni",
@@ -138,7 +147,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 12
+   "row": 12,
+   "priceBand": true
   },
   {
    "id": "prod-choarq",
@@ -149,7 +159,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 13
+   "row": 13,
+   "priceBand": true
   },
   {
    "id": "prod-pre",
@@ -160,7 +171,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 14
+   "row": 14,
+   "priceBand": true
   },
   {
    "id": "prod-torn",
@@ -171,7 +183,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 15
+   "row": 15,
+   "priceBand": true
   },
   {
    "id": "prod-brow",
@@ -182,7 +195,8 @@
    "mayor": 1100.0,
    "detal": 1150.0,
    "isCombo": false,
-   "row": 16
+   "row": 16,
+   "priceBand": true
   },
   {
    "id": "prod-tq",
@@ -193,7 +207,8 @@
    "mayor": 1100.0,
    "detal": 1150.0,
    "isCombo": false,
-   "row": 17
+   "row": 17,
+   "priceBand": true
   },
   {
    "id": "prod-bq",
@@ -204,7 +219,8 @@
    "mayor": 1270.0,
    "detal": 1270.0,
    "isCombo": false,
-   "row": 18
+   "row": 18,
+   "priceBand": true
   },
   {
    "id": "prod-ba",
@@ -215,7 +231,8 @@
    "mayor": 1270.0,
    "detal": 1270.0,
    "isCombo": false,
-   "row": 19
+   "row": 19,
+   "priceBand": true
   },
   {
    "id": "prod-yg",
@@ -226,7 +243,8 @@
    "mayor": 2.5,
    "detal": 2.3,
    "isCombo": false,
-   "row": 20
+   "row": 20,
+   "priceBand": false
   },
   {
    "id": "prod-qp",
@@ -237,7 +255,8 @@
    "mayor": 2.5,
    "detal": 2.3,
    "isCombo": false,
-   "row": 21
+   "row": 21,
+   "priceBand": false
   },
   {
    "id": "prod-qrc",
@@ -248,7 +267,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 22
+   "row": 22,
+   "priceBand": false
   },
   {
    "id": "prod-gelatina",
@@ -259,7 +279,8 @@
    "mayor": 2.0,
    "detal": 2.0,
    "isCombo": false,
-   "row": 23
+   "row": 23,
+   "priceBand": false
   },
   {
    "id": "prod-qredondo",
@@ -270,7 +291,8 @@
    "mayor": 3.5,
    "detal": 4.0,
    "isCombo": false,
-   "row": 24
+   "row": 24,
+   "priceBand": false
   },
   {
    "id": "prod-marmo",
@@ -281,7 +303,8 @@
    "mayor": 1100.0,
    "detal": 1150.0,
    "isCombo": false,
-   "row": 25
+   "row": 25,
+   "priceBand": false
   },
   {
    "id": "prod-pina",
@@ -292,7 +315,8 @@
    "mayor": 1100.0,
    "detal": 1150.0,
    "isCombo": false,
-   "row": 26
+   "row": 26,
+   "priceBand": false
   },
   {
    "id": "prod-cortad",
@@ -303,7 +327,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 27
+   "row": 27,
+   "priceBand": false
   },
   {
    "id": "prod-cata",
@@ -314,7 +339,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 28
+   "row": 28,
+   "priceBand": false
   },
   {
    "id": "prod-pastelito",
@@ -325,7 +351,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 29
+   "row": 29,
+   "priceBand": false
   },
   {
    "id": "prod-pseca",
@@ -336,7 +363,8 @@
    "mayor": 500.0,
    "detal": 500.0,
    "isCombo": false,
-   "row": 30
+   "row": 30,
+   "priceBand": false
   },
   {
    "id": "prod-palme",
@@ -347,7 +375,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 31
+   "row": 31,
+   "priceBand": false
   },
   {
    "id": "prod-polvo",
@@ -358,7 +387,8 @@
    "mayor": 960.0,
    "detal": 1000.0,
    "isCombo": false,
-   "row": 32
+   "row": 32,
+   "priceBand": false
   },
   {
    "id": "prod-susp",
@@ -369,7 +399,8 @@
    "mayor": 500.0,
    "detal": 500.0,
    "isCombo": false,
-   "row": 33
+   "row": 33,
+   "priceBand": false
   },
   {
    "id": "prod-pan-fru",
@@ -380,7 +411,8 @@
    "mayor": 1100.0,
    "detal": 1150.0,
    "isCombo": false,
-   "row": 34
+   "row": 34,
+   "priceBand": false
   },
   {
    "id": "prod-pan-azu",
@@ -391,7 +423,8 @@
    "mayor": 1100.0,
    "detal": 1150.0,
    "isCombo": false,
-   "row": 35
+   "row": 35,
+   "priceBand": false
   },
   {
    "id": "prod-pan-arqp",
@@ -402,7 +435,8 @@
    "mayor": 1100.0,
    "detal": 1150.0,
    "isCombo": false,
-   "row": 36
+   "row": 36,
+   "priceBand": false
   },
   {
    "id": "prod-pan-gyab",
@@ -413,7 +447,8 @@
    "mayor": 1100.0,
    "detal": 1150.0,
    "isCombo": false,
-   "row": 37
+   "row": 37,
+   "priceBand": false
   },
   {
    "id": "prod-pan-tun",
@@ -424,7 +459,8 @@
    "mayor": 1150.0,
    "detal": 1100.0,
    "isCombo": false,
-   "row": 38
+   "row": 38,
+   "priceBand": false
   },
   {
    "id": "prod-golf",
@@ -435,7 +471,8 @@
    "mayor": 1150.0,
    "detal": 1100.0,
    "isCombo": false,
-   "row": 39
+   "row": 39,
+   "priceBand": false
   },
   {
    "id": "prod-p-nina",
@@ -446,7 +483,8 @@
    "mayor": 1150.0,
    "detal": 1100.0,
    "isCombo": false,
-   "row": 40
+   "row": 40,
+   "priceBand": false
   },
   {
    "id": "prod-30und",
@@ -457,7 +495,8 @@
    "mayor": 1.5,
    "detal": 2.0,
    "isCombo": false,
-   "row": 41
+   "row": 41,
+   "priceBand": false
   },
   {
    "id": "prod-100-und",
@@ -468,7 +507,8 @@
    "mayor": 6.0,
    "detal": 7.0,
    "isCombo": false,
-   "row": 42
+   "row": 42,
+   "priceBand": false
   },
   {
    "id": "prod-3kg",
@@ -479,7 +519,8 @@
    "mayor": 13.0,
    "detal": 13.0,
    "isCombo": false,
-   "row": 43
+   "row": 43,
+   "priceBand": false
   },
   {
    "id": "prod-2kg",
@@ -490,7 +531,8 @@
    "mayor": 11.0,
    "detal": 11.0,
    "isCombo": false,
-   "row": 44
+   "row": 44,
+   "priceBand": false
   },
   {
    "id": "prod-1-5-kg",
@@ -501,7 +543,8 @@
    "mayor": 8.0,
    "detal": 8.0,
    "isCombo": false,
-   "row": 45
+   "row": 45,
+   "priceBand": false
   },
   {
    "id": "prod-1kg",
@@ -512,7 +555,8 @@
    "mayor": 7.0,
    "detal": 7.0,
    "isCombo": false,
-   "row": 46
+   "row": 46,
+   "priceBand": false
   },
   {
    "id": "prod-700gr",
@@ -523,7 +567,8 @@
    "mayor": 5.0,
    "detal": 5.0,
    "isCombo": false,
-   "row": 47
+   "row": 47,
+   "priceBand": false
   },
   {
    "id": "prod-c1",
@@ -534,7 +579,8 @@
    "mayor": 2.0,
    "detal": 2.0,
    "isCombo": true,
-   "row": 48
+   "row": 48,
+   "priceBand": false
   },
   {
    "id": "prod-c2",
@@ -545,7 +591,8 @@
    "mayor": 4.0,
    "detal": 4.0,
    "isCombo": true,
-   "row": 49
+   "row": 49,
+   "priceBand": false
   },
   {
    "id": "prod-c3",
@@ -556,7 +603,8 @@
    "mayor": 6.0,
    "detal": 6.0,
    "isCombo": true,
-   "row": 50
+   "row": 50,
+   "priceBand": false
   },
   {
    "id": "prod-bolsa",
@@ -567,7 +615,8 @@
    "mayor": 2.0,
    "detal": 2.0,
    "isCombo": false,
-   "row": 51
+   "row": 51,
+   "priceBand": false
   },
   {
    "id": "prod-banda",
@@ -578,7 +627,8 @@
    "mayor": 2.5,
    "detal": 2.5,
    "isCombo": false,
-   "row": 52
+   "row": 52,
+   "priceBand": false
   },
   {
    "id": "prod-v-num",
@@ -589,7 +639,8 @@
    "mayor": 1.0,
    "detal": 1.0,
    "isCombo": false,
-   "row": 53
+   "row": 53,
+   "priceBand": false
   },
   {
    "id": "prod-v-volc",
@@ -600,7 +651,8 @@
    "mayor": 1.0,
    "detal": 1.0,
    "isCombo": false,
-   "row": 54
+   "row": 54,
+   "priceBand": false
   },
   {
    "id": "prod-v-esc",
@@ -611,7 +663,8 @@
    "mayor": 1.2,
    "detal": 1.2,
    "isCombo": false,
-   "row": 55
+   "row": 55,
+   "priceBand": false
   },
   {
    "id": "prod-v-unit",
@@ -622,7 +675,8 @@
    "mayor": 0.5,
    "detal": 0.5,
    "isCombo": false,
-   "row": 56
+   "row": 56,
+   "priceBand": false
   },
   {
    "id": "prod-topper",
@@ -633,7 +687,8 @@
    "mayor": 2.0,
    "detal": 2.0,
    "isCombo": false,
-   "row": 57
+   "row": 57,
+   "priceBand": false
   },
   {
    "id": "prod-globo-fc",
@@ -644,7 +699,8 @@
    "mayor": 1.5,
    "detal": 1.5,
    "isCombo": false,
-   "row": 58
+   "row": 58,
+   "priceBand": false
   },
   {
    "id": "prod-globo-num",
@@ -655,7 +711,8 @@
    "mayor": 1.2,
    "detal": 1.2,
    "isCombo": false,
-   "row": 59
+   "row": 59,
+   "priceBand": false
   },
   {
    "id": "prod-cortina",
@@ -666,7 +723,8 @@
    "mayor": 1.5,
    "detal": 1.5,
    "isCombo": false,
-   "row": 60
+   "row": 60,
+   "priceBand": false
   },
   {
    "id": "prod-mantel",
@@ -677,7 +735,8 @@
    "mayor": 1.5,
    "detal": 1.5,
    "isCombo": false,
-   "row": 61
+   "row": 61,
+   "priceBand": false
   }
  ]
 }
